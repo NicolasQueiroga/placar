@@ -40,7 +40,7 @@ export const UFBoard = memo(function UFBoard({
         const final = u.status === 'final';
         return (
           <div
-            key={u.uf}
+            key={u.uf === 'ZZ' ? 'EX' : u.uf}
             style={{
               border: `1px solid ${final ? 'var(--green-urna)' : 'var(--line)'}`,
               borderRadius: 4,
@@ -51,8 +51,8 @@ export const UFBoard = memo(function UFBoard({
             }}
             aria-label={
               leader
-                ? `${u.uf}: ${leader.ballotName} ${pct1(leader.percent)}%`
-                : `${u.uf}: aguardando`
+                ? `${u.uf === 'ZZ' ? 'EX' : u.uf}: ${leader.ballotName} ${pct1(leader.percent)}%`
+                : `${u.uf === 'ZZ' ? 'EX' : u.uf}: aguardando`
             }
           >
             {/* counting progress as a bottom fill — passive meter */}
@@ -71,7 +71,7 @@ export const UFBoard = memo(function UFBoard({
               className="num"
               style={{ fontSize: 10, color: 'var(--text-faint)', display: 'flex', justifyContent: 'space-between' }}
             >
-              <span style={{ color: 'var(--text-dim)', fontWeight: 600 }}>{u.uf}</span>
+              <span style={{ color: 'var(--text-dim)', fontWeight: 600 }}>{u.uf === 'ZZ' ? 'EX' : u.uf}</span>
               <span>{pct1(u.percentSections)}%</span>
             </div>
             <div

@@ -3,7 +3,7 @@ import { ELECTIONS, fetchAcompanhamento, fetchNational, fetchUF, forecastSecondR
 import type { RaceKey } from './tse';
 import type { RaceData, SecondRoundForecast, UFProgress } from './types';
 
-const POLL_MS = 30_000;
+const POLL_MS = 15_000;
 
 export interface LiveState {
   national: RaceData | null;
@@ -45,12 +45,24 @@ export function useElection(): LiveState {
       if (ufs.length > 0) setUfProgress(new Map(ufs.map((u) => [u.uf, u])));
 
       // Per-UF results for the active race (ETag-cached after first load)
+      // Presidente also has the exterior vote (cdabr 'zz')
+      const ufList = [...ufs];
+      if (race.scope === 'br' && !ufList.some((u) => u.uf === 'ZZ')) {
+        ufList.push({
+          uf: 'ZZ',
+          status: 'partial',
+          percentSections: 0,
+          electorsTotal: 0,
+          electorsCounted: 0,
+          updatedAt: '',
+        });
+      }
       const results = await Promise.allSettled(
-        ufs.map((u) => fetchUF(u.uf, election, race.cargo)),
+        ufList.map((u) => fetchUF(u.uf, election, race.cargo)),
       );
       const newResults = new Map<string, RaceData>();
       results.forEach((r, i) => {
-        if (r.status === 'fulfilled' && r.value) newResults.set(ufs[i].uf, r.value);
+        if (r.status === 'fulfilled' && r.value) newResults.set(ufList[i].uf, r.value);
       });
       if (newResults.size > 0) {
         setUfResults((prev) => {

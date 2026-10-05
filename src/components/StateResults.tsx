@@ -53,7 +53,7 @@ export const StateResults = memo(function StateResults({
         const decided = leader && nearDone && leader.percent > 50;
         return (
           <li
-            key={uf}
+            key={uf === 'ZZ' ? 'EX' : uf}
             style={{
               display: 'grid',
               gridTemplateColumns: '34px 1fr auto',
@@ -64,7 +64,7 @@ export const StateResults = memo(function StateResults({
             }}
           >
             <span className="num" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-dim)' }}>
-              {uf}
+              {uf === 'ZZ' ? 'EX' : uf}
             </span>
             <div style={{ minWidth: 0 }}>
               {kind === 'runoff' ? (

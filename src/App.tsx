@@ -18,18 +18,12 @@ import { useAlerts } from './alerts';
 export default function App() {
   const { national, ufProgress, ufResults, forecast, lastUpdated, error, loading, race, setRace, turno, setTurno, refresh } =
     useElection();
-  const [now, setNow] = useState(Date.now());
+  // NOTE: no 1s heartbeat at App level — UpdatedAgo ticks itself
   // trend + alerts memory are per race AND per turno
   const seriesKey = `${race.key}:${turno}`;
   const [trend, setTrend] = useState<TrendPoint[]>(() => loadTrend(seriesKey));
   const { alerts, soundOn, toggleSound, dismiss } = useAlerts(national, ufResults, seriesKey);
   const trendRace = useRef(seriesKey);
-
-  // heartbeat for "updated Xs ago"
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
 
   // record trend points when national data changes (per-race reset)
   useEffect(() => {
@@ -42,7 +36,6 @@ export default function App() {
     setTrend((prev) => appendTrend(prev, national, seriesKey));
   }, [national, seriesKey]);
 
-  const ago = lastUpdated ? Math.max(0, Math.round((now - lastUpdated) / 1000)) : null;
   const leader = national?.candidates[0];
   const runnerUp = national?.candidates[1];
 
@@ -138,9 +131,7 @@ export default function App() {
           >
             {loading ? 'atualizando…' : 'atualizar'}
           </button>
-          <div className="num" style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
-            {ago === null ? 'conectando…' : `há ${ago}s`} · a cada 30s
-          </div>
+          <UpdatedAgo at={lastUpdated} />
         </div>
       </header>
 
@@ -461,6 +452,21 @@ function GovernorSummary({
       <div className="num" style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6, lineHeight: 1.5 }}>
         estados sem maioria absoluta vão a 2º turno em 25 de outubro
       </div>
+    </div>
+  );
+}
+
+/** Self-ticking "updated Xs ago" — isolates the 1s re-render from the dashboard. */
+function UpdatedAgo({ at }: { at: number | null }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const ago = at ? Math.max(0, Math.round((now - at) / 1000)) : null;
+  return (
+    <div className="num" style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
+      {ago === null ? 'conectando…' : `há ${ago}s`} · a cada 15s
     </div>
   );
 }
