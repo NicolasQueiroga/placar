@@ -34,6 +34,7 @@ const RACES = [
 
 interface TseCand {
   nmu: string;
+  sqcand?: string;
   vap: string;
   pvap: string;
   st?: string;
@@ -54,7 +55,7 @@ interface SnapshotRow {
   electors: number;
   valid: number;
   turnout: number;
-  candidates: string; // JSON: [{name, party, votes, pct}]
+  candidates: string; // JSON: [{name, id, party, votes, pct}]
   status: string;
   fetched_at: number;
 }
@@ -79,7 +80,7 @@ async function fetchTse(url: string): Promise<TseUnified | null> {
 function normalize(raw: TseUnified, race: string, uf: string): SnapshotRow | null {
   const carg = raw.carg?.[0];
   if (!carg) return null;
-  const candidates: { name: string; party: string; votes: number; pct: number }[] = [];
+  const candidates: { name: string; id: string; party: string; votes: number; pct: number }[] = [];
   for (const agr of carg.agr ?? []) {
     for (const par of agr.par ?? []) {
       for (const c of par.cand ?? []) {
@@ -87,6 +88,7 @@ function normalize(raw: TseUnified, race: string, uf: string): SnapshotRow | nul
         if (votes === 0) continue;
         candidates.push({
           name: c.nmu,
+          id: c.sqcand ?? c.nmu,
           party: par.sg ?? '',
           votes,
           pct: parseFloat((c.pvap ?? '0').replace(',', '.')) || 0,

@@ -14,6 +14,7 @@ import { CountUp } from './components/CountUp';
 import { Duel } from './components/Duel';
 import { RACES } from './tse';
 import { appendTrend, loadTrend } from './trend';
+import { fetchServerTrend, mergeTrends } from './serverTrend';
 import type { TrendPoint } from './trend';
 import { useAlerts } from './alerts';
 
@@ -23,8 +24,29 @@ export default function App() {
   // trend + alerts memory are per race AND per turno
   const seriesKey = `${race.key}:${turno}`;
   const [trend, setTrend] = useState<TrendPoint[]>(() => loadTrend(seriesKey));
+  const [serverTrend, setServerTrend] = useState<TrendPoint[]>([]);
   const { alerts, soundOn, toggleSound, dismiss } = useAlerts(national, ufResults, seriesKey);
   const trendRace = useRef(seriesKey);
+
+  // server archive: real minute-by-minute history from D1 (cross-device, survives refresh)
+  useEffect(() => {
+    let alive = true;
+    if (seriesKey === 'presidente:1') {
+      fetchServerTrend().then((pts) => {
+        if (alive) setServerTrend(pts);
+      });
+    } else {
+      setServerTrend([]);
+    }
+    return () => {
+      alive = false;
+    };
+  }, [seriesKey]);
+
+  const mergedTrend = useMemo(
+    () => mergeTrends(serverTrend, trend),
+    [serverTrend, trend],
+  );
 
   // record trend points when national data changes (per-race reset)
   useEffect(() => {
@@ -330,9 +352,9 @@ export default function App() {
           {/* TREND — full width */}
           <section className="enter" style={{ marginTop: 26 }}>
             <div className="eyebrow" style={{ marginBottom: 8 }}>
-              Evolução — {race.label} (história desta sessão)
+              Evolução — {race.label} (arquivo do servidor + esta sessão)
             </div>
-            <TrendChart points={trend} candidates={national.candidates} />
+            <TrendChart points={mergedTrend} candidates={national.candidates} />
           </section>
 
           {/* SCENARIOS — presidential only */}
