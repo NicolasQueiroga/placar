@@ -119,7 +119,8 @@ export function useElection(): LiveState {
     };
   }, [tick]);
 
-  const forecast = national ? forecastSecondRound(national, [...ufProgress.values()], ufResults) : null;
+  const forecast =
+    national && race.runoff ? forecastSecondRound(national, [...ufProgress.values()], ufResults) : null;
 
   return {
     national,

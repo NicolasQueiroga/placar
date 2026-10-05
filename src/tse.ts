@@ -27,10 +27,10 @@ export const CARGOS = {
 
 /** Races the app exposes. scope 'br' = national file exists; 'uf' = per-UF only. */
 export const RACES = [
-  { key: 'presidente', label: 'Presidente', election: ELECTIONS.presidente1, cargo: CARGOS.presidente, scope: 'br' },
-  { key: 'governador', label: 'Governador', election: ELECTIONS.estadual1, cargo: CARGOS.governador, scope: 'uf' },
-  { key: 'senador', label: 'Senador', election: ELECTIONS.estadual1, cargo: CARGOS.senador, scope: 'uf' },
-  { key: 'depFederal', label: 'Dep. Federal', election: ELECTIONS.estadual1, cargo: CARGOS.depFederal, scope: 'uf' },
+  { key: 'presidente', label: 'Presidente', election: ELECTIONS.presidente1, cargo: CARGOS.presidente, scope: 'br', runoff: true },
+  { key: 'governador', label: 'Governador', election: ELECTIONS.estadual1, cargo: CARGOS.governador, scope: 'uf', runoff: true },
+  { key: 'senador', label: 'Senador', election: ELECTIONS.estadual1, cargo: CARGOS.senador, scope: 'uf', runoff: false },
+  { key: 'depFederal', label: 'Dep. Federal', election: ELECTIONS.estadual1, cargo: CARGOS.depFederal, scope: 'uf', runoff: false },
 ] as const;
 
 export type RaceKey = (typeof RACES)[number]['key'];
