@@ -2,7 +2,18 @@
 
 Apuração ao vivo das eleições presidenciais brasileiras de 2026, direto dos dados oficiais do TSE.
 
-**https://placar.nqlabs.io** (em breve)
+**https://placar.nqlabs.io**
+
+## Deploy
+
+Hospedado no **Cloudflare Pages**, conectado a este repositório. Cada push para
+`main` dispara build (`npm run build`) e deploy automático em ~1 minuto.
+Pushes para outras branches geram previews com URL temporária; deploys
+anteriores ficam acessíveis e podem ser restaurados com um clique (Rollback).
+
+- Domínio: `placar.nqlabs.io` (zona `nqlabs.io` gerenciada no Cloudflare)
+- Variáveis de ambiente: nenhuma — o app é estático e sem chaves
+- Node: 22 (fixado nas configurações do build)
 
 ## O que tem
 
