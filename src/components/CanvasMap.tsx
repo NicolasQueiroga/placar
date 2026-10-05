@@ -147,6 +147,14 @@ interface MunResult {
   pb: number;
   vb: number;
 }
+const UF_NAMES: Record<string, string> = {
+  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará',
+  DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão',
+  MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará',
+  PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro',
+  RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima',
+  SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins',
+};
 let munResults: Record<string, MunResult> | null = null;
 async function ensureResults(): Promise<Record<string, MunResult>> {
   if (munResults) return munResults;
@@ -443,13 +451,16 @@ export const CanvasMap = memo(function CanvasMap({
       return;
     }
     const m = hitTest(e.clientX, e.clientY);
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     const prev = hoverRef.current;
     if (m?.id !== prev?.id) {
       hoverRef.current = m ? { id: m.id } : null;
-      setHover(m ? { mun: m, x: e.clientX, y: e.clientY } : null); // full update only on mun change
+      setHover(m ? { mun: m, x, y } : null); // full update only on mun change
     } else if (m && prev) {
       // same mun — just move the tooltip, no canvas redraw needed
-      setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : h));
+      setHover((h) => (h ? { ...h, x, y } : h));
     }
   };
 
@@ -503,28 +514,38 @@ export const CanvasMap = memo(function CanvasMap({
     target.current = { k, ox: W / 2 - m.cx * k, oy: H / 2 - m.cy * k };
   };
 
-  // tooltip content
+  // tooltip content — mun line + ALWAYS a state line, so even a
+  // data-less municipality still shows the whole-state numbers
   const tip = useMemo(() => {
     if (!hover) return null;
-    if (mode !== 'presidente') {
-      const r = ufResults.get(hover.mun.uf);
-      const a = r?.candidates[0];
-      const b = r?.candidates[1];
+    const uf = hover.mun.uf;
+    const ufName = UF_NAMES[uf] ?? uf;
+    const ufData = ufResults.get(uf);
+    const ua = ufData?.candidates[0];
+    const ub = ufData?.candidates[1];
+    const ufLine = ua
+      ? `${ua.ballotName} ${ua.percent.toFixed(1).replace('.', ',')}%${ub ? ` · ${ub.ballotName} ${ub.percent.toFixed(1).replace('.', ',')}%` : ''}`
+      : null;
+
+    if (mode === 'presidente') {
+      const r = results.current?.[hover.mun.id];
       return {
         name: hover.mun.name,
-        uf: hover.mun.uf,
-        body: a
-          ? `${a.ballotName} ${a.percent.toFixed(1).replace('.', ',')}%${b ? ` · ${b.ballotName} ${b.percent.toFixed(1).replace('.', ',')}%` : ''} (${hover.mun.uf})`
-          : 'sem dados',
+        uf,
+        ufName,
+        munLine: r
+          ? `${r.a} ${r.pa.toFixed(1).replace('.', ',')}% · ${r.b} ${r.pb.toFixed(1).replace('.', ',')}%`
+          : 'sem dados municipais',
+        ufLine,
       };
     }
-    if (!results.current) return null;
-    const r = results.current[hover.mun.id];
-    if (!r) return { name: hover.mun.name, uf: hover.mun.uf, body: 'sem dados' };
+    // other races: state-level live data is the whole tooltip
     return {
       name: hover.mun.name,
-      uf: hover.mun.uf,
-      body: `${r.a} ${r.pa.toFixed(1).replace('.', ',')}% · ${r.b} ${r.pb.toFixed(1).replace('.', ',')}%`,
+      uf,
+      ufName,
+      munLine: null,
+      ufLine,
     };
   }, [hover, mode, ufResults]);
 
@@ -549,24 +570,42 @@ export const CanvasMap = memo(function CanvasMap({
       {tip && hover && (
         <div
           style={{
-            position: 'fixed',
-            left: hover.x + 14,
-            top: hover.y + 14,
+            position: 'absolute',
+            // follow the cursor, flip to the other side near container edges
+            left: Math.min(hover.x + 14, (wrapRef.current?.clientWidth ?? 0) - 240),
+            top: hover.y + 18,
+            transform: hover.y > (wrapRef.current?.clientHeight ?? 0) - 130 ? 'translateY(calc(-100% - 24px))' : undefined,
             background: '#1c1913',
             border: '1px solid var(--line)',
             borderRadius: 4,
             padding: '8px 12px',
             pointerEvents: 'none',
             zIndex: 20,
-            maxWidth: 280,
+            width: 226,
           }}
         >
           <div style={{ fontWeight: 700, fontSize: 13 }}>
             {tip.name} <span className="num" style={{ color: 'var(--text-faint)', fontWeight: 400 }}>· {tip.uf}</span>
           </div>
-          <div className="num" style={{ fontSize: 11.5, color: 'var(--text-dim)', marginTop: 3 }}>
-            {tip.body}
-          </div>
+          {tip.munLine && (
+            <div className="num" style={{ fontSize: 11.5, color: 'var(--text-dim)', marginTop: 4 }}>
+              {tip.munLine}
+            </div>
+          )}
+          {tip.ufLine && (
+            <div
+              className="num"
+              style={{
+                fontSize: 11.5,
+                color: 'var(--text-dim)',
+                marginTop: tip.munLine ? 2 : 4,
+                paddingTop: tip.munLine ? 4 : 0,
+                borderTop: tip.munLine ? '1px solid var(--line)' : undefined,
+              }}
+            >
+              {tip.ufName}: {tip.ufLine}
+            </div>
+          )}
         </div>
       )}
       {!loaded && (
