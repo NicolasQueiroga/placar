@@ -38,7 +38,7 @@ interface MunShape {
   cy: number;
 }
 
-function decodeTopo(topo: Topo): { muns: MunShape[]; box: [number, number, number, number]; borders: Path2D } {
+function decodeTopo(topo: Topo): Geo {
   const { arcs, transform } = topo;
   const [sx, sy] = transform.scale;
   const [tx, ty] = transform.translate;
@@ -72,6 +72,9 @@ function decodeTopo(topo: Topo): { muns: MunShape[]; box: [number, number, numbe
   let bx1 = -Infinity;
   let by1 = -Infinity;
 
+
+  // all ring segments for state-border matching (see below)
+  const segs: { a: [number, number]; b: [number, number]; uf: string; mx: number; my: number }[] = [];
   for (const g of topo.objects.municipios.geometries) {
     const polys = g.type === 'Polygon' ? [g.arcs as number[][]] : (g.arcs as number[][][]);
     const path = new Path2D();
@@ -86,6 +89,11 @@ function decodeTopo(topo: Topo): { muns: MunShape[]; box: [number, number, numbe
         path.moveTo(pts[0][0], pts[0][1]);
         for (let k = 1; k < pts.length; k++) path.lineTo(pts[k][0], pts[k][1]);
         path.closePath();
+        for (let k = 0; k < pts.length; k++) {
+          const a = pts[k];
+          const b = pts[(k + 1) % pts.length];
+          segs.push({ a: [a[0], a[1]], b: [b[0], b[1]], uf: g.properties.uf, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 });
+        }
         for (const [px, py] of pts) {
           if (px < x0) x0 = px;
           if (py < y0) y0 = py;
@@ -111,7 +119,45 @@ function decodeTopo(topo: Topo): { muns: MunShape[]; box: [number, number, numbe
   // single combined path for all borders — one stroke call instead of 5,570
   const borders = new Path2D();
   for (const m of muns) borders.addPath(m.path);
-  return { muns, box: [bx0, by0, bx1, by1], borders };
+
+  // state borders: ring segments whose other side belongs to a different
+  // UF. Arcs aren't deduped across muns in this file (verified: 5,679 of
+  // 5,681 arcs used once), so match geometrically — a different-UF segment
+  // midpoint within 1.2km of ours. ~150ms once at decode, cached.
+  const SCELL = 2000; // 2km grid cells
+  const sgrid = new Map<string, number[]>();
+  segs.forEach((s, i) => {
+    const k = `${Math.floor(s.mx / SCELL)},${Math.floor(s.my / SCELL)}`;
+    let a = sgrid.get(k);
+    if (!a) sgrid.set(k, (a = []));
+    a.push(i);
+  });
+  const stateBorders = new Path2D();
+  const R2 = 1200 * 1200;
+  for (const s of segs) {
+    const gx = Math.floor(s.mx / SCELL);
+    const gy = Math.floor(s.my / SCELL);
+    let border = false;
+    outer: for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const a = sgrid.get(`${gx + dx},${gy + dy}`);
+        if (!a) continue;
+        for (const j of a) {
+          const o = segs[j];
+          if (o.uf === s.uf) continue;
+          if ((s.mx - o.mx) ** 2 + (s.my - o.my) ** 2 < R2) {
+            border = true;
+            break outer;
+          }
+        }
+      }
+    }
+    if (border) {
+      stateBorders.moveTo(s.a[0], s.a[1]);
+      stateBorders.lineTo(s.b[0], s.b[1]);
+    }
+  }
+  return { muns, box: [bx0, by0, bx1, by1], borders, stateBorders };
 }
 
 /* ---------- color: party color × margin tone ---------- */
@@ -167,6 +213,7 @@ interface Geo {
   muns: MunShape[];
   box: [number, number, number, number];
   borders: Path2D;
+  stateBorders: Path2D;
 }
 let topoCache: Geo | null = null;
 async function ensureGeo() {
@@ -205,6 +252,7 @@ export const CanvasMap = memo(function CanvasMap({
   const rafRef = useRef<number>(0);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const hoverRef = useRef<{ id: string } | null>(null);
+  const tipRef = useRef<HTMLDivElement | null>(null);
 
   // load geo + results once
   const geo = useRef<Geo | null>(null);
@@ -302,6 +350,11 @@ export const CanvasMap = memo(function CanvasMap({
     bctx.strokeStyle = 'rgba(15,14,13,.55)';
     bctx.lineWidth = 2000; // geo meters ≈ 1px at base resolution
     bctx.stroke(geo.current.borders);
+
+    // state lines read above mun seams — thicker, near-black
+    bctx.strokeStyle = 'rgba(10,8,6,.95)';
+    bctx.lineWidth = 5200; // ≈2.6px at base res
+    bctx.stroke(geo.current.stateBorders);
   };
 
   // fit view to container
@@ -569,12 +622,17 @@ export const CanvasMap = memo(function CanvasMap({
       />
       {tip && hover && (
         <div
+          ref={tipRef}
           style={{
             position: 'absolute',
-            // follow the cursor, flip to the other side near container edges
-            left: Math.min(hover.x + 14, (wrapRef.current?.clientWidth ?? 0) - 240),
-            top: hover.y + 18,
-            transform: hover.y > (wrapRef.current?.clientHeight ?? 0) - 130 ? 'translateY(calc(-100% - 24px))' : undefined,
+            left: 0,
+            top: 0,
+            // measured flip: keep the tooltip fully inside the container
+            transform: `translate(${Math.max(8, Math.min(hover.x + 14, (wrapRef.current?.clientWidth ?? 0) - (tipRef.current?.offsetWidth ?? 250) - 8))}px, ${
+              hover.y + 18 + (tipRef.current?.offsetHeight ?? 90) > (wrapRef.current?.clientHeight ?? 460)
+                ? hover.y - (tipRef.current?.offsetHeight ?? 90) - 14
+                : hover.y + 18
+            }px)`,
             background: '#1c1913',
             border: '1px solid var(--line)',
             borderRadius: 4,
