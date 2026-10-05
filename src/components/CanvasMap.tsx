@@ -194,6 +194,7 @@ export const CanvasMap = memo(function CanvasMap({
   const target = useRef<View>({ ox: 0, oy: 0, k: 1 });
   const rafRef = useRef<number>(0);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const hoverRef = useRef<{ id: string } | null>(null);
 
   // load geo + results once
   const geo = useRef<Geo | null>(null);
@@ -229,6 +230,68 @@ export const CanvasMap = memo(function CanvasMap({
     }
     return { map, CELL };
   }, [loaded]);
+
+  // offscreen base: colored map rendered ONCE per data change in geo coords.
+  // Main loop just blits it — 5,570 fills happen once, not every frame.
+  const baseRef = useRef<HTMLCanvasElement | null>(null);
+  const renderBase = () => {
+    if (!geo.current || !results.current) return;
+    const [x0, y0, x1, y1] = geo.current.box;
+    const gw = x1 - x0;
+    const gh = y1 - y0;
+    // render at ~1.2px per 2km — enough for zoom up to ~8x
+    const RES = Math.min(4, Math.max(1.5, 2048 / Math.max(gw, gh) * 1000));
+    const w = Math.ceil(gw / 1000 * RES);
+    const h = Math.ceil(gh / 1000 * RES);
+    let c = baseRef.current;
+    if (!c) {
+      c = document.createElement('canvas');
+      baseRef.current = c;
+    }
+    c.width = w;
+    c.height = h;
+    const bctx = c.getContext('2d')!;
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    bctx.clearRect(0, 0, w, h);
+    bctx.setTransform(RES / 1000, 0, 0, RES / 1000, -x0 * RES / 1000, -y0 * RES / 1000);
+
+    const res = results.current;
+    const ufLeader = new Map<string, { color: string; margin: number }>();
+    if (mode !== 'presidente') {
+      for (const [uf, r] of ufResults) {
+        const a = r.candidates[0];
+        const b = r.candidates[1];
+        if (!a) continue;
+        ufLeader.set(uf, {
+          color: partyColor(a.party, a.coalition),
+          margin: b ? Math.abs(a.percent - b.percent) : 30,
+        });
+      }
+    }
+
+    // two passes: fills grouped by color (minimize state changes), then borders once
+    const byColor = new Map<string, Path2D>();
+    for (const m of geo.current.muns) {
+      let fill = '#221f18';
+      if (mode === 'presidente') {
+        const r = res[m.id];
+        if (r) fill = marginTone(partyColorByName(r.a), Math.abs(r.pa - r.pb));
+      } else {
+        const l = ufLeader.get(m.uf);
+        if (l) fill = marginTone(l.color, l.margin);
+      }
+      let p = byColor.get(fill);
+      if (!p) byColor.set(fill, (p = new Path2D()));
+      p.addPath(m.path);
+    }
+    for (const [color, p] of byColor) {
+      bctx.fillStyle = color;
+      bctx.fill(p);
+    }
+    bctx.strokeStyle = 'rgba(15,14,13,.55)';
+    bctx.lineWidth = 500; // in geo meters ≈ 0.5px at RES
+    bctx.stroke(geo.current.borders);
+  };
 
   // fit view to container
   const fit = () => {
@@ -275,64 +338,48 @@ export const CanvasMap = memo(function CanvasMap({
     ctx.translate(v.ox, v.oy);
     ctx.scale(v.k, v.k);
 
-    const res = results.current;
-    const sel = selected;
-    const ufLeader = new Map<string, { color: string; margin: number }>();
-    if (mode !== 'presidente') {
-      for (const [uf, r] of ufResults) {
-        const a = r.candidates[0];
-        const b = r.candidates[1];
-        if (!a) continue;
-        ufLeader.set(uf, {
-          color: partyColor(a.party, a.coalition),
-          margin: b ? Math.abs(a.percent - b.percent) : 30,
-        });
-      }
+    // blit the pre-rendered base — one drawImage instead of 5,570 fills
+    if (baseRef.current) {
+      const [x0, y0, x1, y1] = geo.current!.box;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(baseRef.current, x0, y0, x1 - x0, y1 - y0);
     }
 
-    // draw municipalities
-    for (const m of geo.current.muns) {
-      let fill = '#221f18';
-      if (mode === 'presidente') {
-        const r = res[m.id];
-        if (r) fill = marginTone(partyColorByName(r.a), Math.abs(r.pa - r.pb));
-      } else {
-        const l = ufLeader.get(m.uf);
-        if (l) fill = marginTone(l.color, l.margin);
-      }
-      ctx.fillStyle = fill;
-      ctx.fill(m.path);
-      if (m.id === sel) {
-        ctx.save();
-        ctx.shadowColor = 'rgba(250,250,249,.5)';
-        ctx.shadowBlur = 10 / v.k;
-        ctx.strokeStyle = '#FAFAF9';
-        ctx.lineWidth = 2 / v.k;
-        ctx.stroke(m.path);
-        ctx.restore();
-      } else if (hover && hover.mun.id === m.id) {
-        ctx.strokeStyle = 'rgba(250,250,249,.7)';
-        ctx.lineWidth = 1.4 / v.k;
-        ctx.stroke(m.path);
-      }
+    // overlays: at most 2 shapes — hover + selected
+    const selMun = selected ? geo.current!.muns.find((m) => m.id === selected) : null;
+    if (selMun) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(250,250,249,.5)';
+      ctx.shadowBlur = 10 / v.k;
+      ctx.strokeStyle = '#FAFAF9';
+      ctx.lineWidth = 2 / v.k;
+      ctx.stroke(selMun.path);
+      ctx.restore();
     }
-
-    // borders: one combined stroke — 5,570 muns, 1 draw call
-    ctx.strokeStyle = 'rgba(15,14,13,.55)';
-    ctx.lineWidth = 0.5 / v.k;
-    ctx.stroke(geo.current.borders);
+    if (hover && hover.mun.id !== selected) {
+      ctx.strokeStyle = 'rgba(250,250,249,.7)';
+      ctx.lineWidth = 1.4 / v.k;
+      ctx.stroke(hover.mun.path);
+    }
 
     ctx.restore();
 
-    if (!still) rafRef.current = requestAnimationFrame(draw);
+    if (!still) schedule();
   };
 
-  // redraw on data/selection change
+  // single-flight scheduler — never stack rAF chains
+  const schedule = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(draw);
+  };
+
+  // base render on data change (expensive path runs ONCE)
   useEffect(() => {
     if (!loaded) return;
+    renderBase();
     fit();
     view.current = { ...target.current };
-    rafRef.current = requestAnimationFrame(draw);
+    schedule();
     return () => cancelAnimationFrame(rafRef.current);
   }, [loaded, selected, ufProgress, ufResults, mode]);
 
@@ -340,7 +387,7 @@ export const CanvasMap = memo(function CanvasMap({
     const onResize = () => {
       if (!loaded) return;
       fit();
-      rafRef.current = requestAnimationFrame(draw);
+      schedule();
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -381,12 +428,26 @@ export const CanvasMap = memo(function CanvasMap({
       };
       d.x = e.clientX;
       d.y = e.clientY;
-      rafRef.current = requestAnimationFrame(draw);
+      schedule();
       return;
     }
     const m = hitTest(e.clientX, e.clientY);
-    setHover(m ? { mun: m, x: e.clientX, y: e.clientY } : null);
+    const prev = hoverRef.current;
+    if (m?.id !== prev?.id) {
+      hoverRef.current = m ? { id: m.id } : null;
+      setHover(m ? { mun: m, x: e.clientX, y: e.clientY } : null); // full update only on mun change
+    } else if (m && prev) {
+      // same mun — just move the tooltip, no canvas redraw needed
+      setHover((h) => (h ? { ...h, x: e.clientX, y: e.clientY } : h));
+    }
   };
+
+  // hover overlay redraw — cheap blit + ≤2 strokes, scheduled at most once per frame
+  useEffect(() => {
+    if (!loaded) return;
+    cancelAnimationFrame(rafRef.current);
+    schedule();
+  }, [hover]);
 
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -397,7 +458,7 @@ export const CanvasMap = memo(function CanvasMap({
     const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
     const k2 = Math.min(400, Math.max(0.5, t.k * factor));
     target.current = { k: k2, ox: mx - ((mx - t.ox) / t.k) * k2, oy: my - ((my - t.oy) / t.k) * k2 };
-    rafRef.current = requestAnimationFrame(draw);
+    schedule();
   };
 
   const onClick = (e: React.MouseEvent) => {
@@ -410,7 +471,7 @@ export const CanvasMap = memo(function CanvasMap({
       setSelected(m.id);
       zoomTo(m);
     }
-    rafRef.current = requestAnimationFrame(draw);
+    schedule();
   };
 
   const zoomTo = (m: MunShape) => {
