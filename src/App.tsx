@@ -13,6 +13,7 @@ import { StateResults } from './components/StateResults';
 import { CountUp } from './components/CountUp';
 import { Duel } from './components/Duel';
 import { TVMode } from './components/TVMode';
+import { Replay } from './components/Replay';
 import { RACES } from './tse';
 import { appendTrend, loadTrend } from './trend';
 import { fetchServerTrend, mergeTrends } from './serverTrend';
@@ -384,6 +385,9 @@ export default function App() {
             <section className="enter" style={{ marginTop: 26 }}>
               <RunoffScenarios national={national} />
               <RunoffHistory />
+              <div style={{ marginTop: 20 }}>
+                <Replay />
+              </div>
             </section>
           )}
         </>
