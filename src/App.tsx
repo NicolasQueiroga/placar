@@ -12,6 +12,7 @@ import { Manchete } from './components/Manchete';
 import { StateResults } from './components/StateResults';
 import { CountUp } from './components/CountUp';
 import { Duel } from './components/Duel';
+import { TVMode } from './components/TVMode';
 import { RACES } from './tse';
 import { appendTrend, loadTrend } from './trend';
 import { fetchServerTrend, mergeTrends } from './serverTrend';
@@ -21,6 +22,24 @@ import { useAlerts } from './alerts';
 export default function App() {
   const { national, ufProgress, ufResults, forecast, lastUpdated, error, loading, race, setRace, turno, setTurno, refresh } =
     useElection();
+
+  // TV mode — #/tv route, fullscreen, esc exits
+  const [tv, setTv] = useState(() => window.location.hash.includes('tv'));
+  useEffect(() => {
+    const onHash = () => setTv(window.location.hash.includes('tv'));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && window.location.hash.includes('tv')) {
+        window.location.hash = '';
+      }
+    };
+    window.addEventListener('hashchange', onHash);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('hashchange', onHash);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
+
   // trend + alerts memory are per race AND per turno
   const seriesKey = `${race.key}:${turno}`;
   const [trend, setTrend] = useState<TrendPoint[]>(() => loadTrend(seriesKey));
@@ -76,6 +95,9 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '0 clamp(16px, 3vw, 40px) 48px' }}>
+      {tv && national && (
+        <TVMode national={national} ufProgress={ufProgress} ufResults={ufResults} trendPoints={mergedTrend} />
+      )}
       {/* Sticky glass bar — race switcher + live status, always visible */}
       <div
         className="glass"
