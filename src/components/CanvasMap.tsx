@@ -212,10 +212,11 @@ export const CanvasMap = memo(function CanvasMap({
     };
   }, []);
 
-  // spatial grid for hit-testing
+  // spatial grid for hit-testing — CELL in GEO METERS (~25km cells ≈ topo units)
+  // bbox is ~4.6M × 4.3M meters → ~185×175 cells total. Small map, instant lookups.
   const grid = useMemo(() => {
     if (!geo.current) return null;
-    const CELL = 40;
+    const CELL = 25000;
     const map = new Map<number, MunShape[]>();
     for (const m of geo.current.muns) {
       const [x0, y0, x1, y1] = m.box;
@@ -239,10 +240,10 @@ export const CanvasMap = memo(function CanvasMap({
     const [x0, y0, x1, y1] = geo.current.box;
     const gw = x1 - x0;
     const gh = y1 - y0;
-    // render at ~1.2px per 2km — enough for zoom up to ~8x
-    const RES = Math.min(4, Math.max(1.5, 2048 / Math.max(gw, gh) * 1000));
-    const w = Math.ceil(gw / 1000 * RES);
-    const h = Math.ceil(gh / 1000 * RES);
+    // target ~2400px on the long side — crisp to ~4x zoom, ~23MB RGBA, safe on mobile
+    const RES = 2400 / Math.max(gw, gh);
+    const w = Math.ceil(gw * RES);
+    const h = Math.ceil(gh * RES);
     let c = baseRef.current;
     if (!c) {
       c = document.createElement('canvas');
@@ -253,7 +254,7 @@ export const CanvasMap = memo(function CanvasMap({
     const bctx = c.getContext('2d')!;
     bctx.setTransform(1, 0, 0, 1, 0, 0);
     bctx.clearRect(0, 0, w, h);
-    bctx.setTransform(RES / 1000, 0, 0, RES / 1000, -x0 * RES / 1000, -y0 * RES / 1000);
+    bctx.setTransform(RES, 0, 0, RES, -x0 * RES, -y0 * RES);
 
     const res = results.current;
     const ufLeader = new Map<string, { color: string; margin: number }>();
@@ -289,7 +290,7 @@ export const CanvasMap = memo(function CanvasMap({
       bctx.fill(p);
     }
     bctx.strokeStyle = 'rgba(15,14,13,.55)';
-    bctx.lineWidth = 500; // in geo meters ≈ 0.5px at RES
+    bctx.lineWidth = 2000; // geo meters ≈ 1px at base resolution
     bctx.stroke(geo.current.borders);
   };
 
