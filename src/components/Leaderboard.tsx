@@ -120,7 +120,7 @@ const Row = memo(function Row({
         </div>
       </div>
       <div style={{ textAlign: 'right' }}>
-        <div style={{ fontWeight: 700, fontSize: compact ? 15 : 18 }}>
+        <div className="fig" style={{ fontSize: compact ? 19 : 22, lineHeight: 1.05 }}>
           <CountUp value={c.percent} format={pct} />
         </div>
         <div className="num" style={{ fontSize: 11, color: 'var(--text-dim)' }}>

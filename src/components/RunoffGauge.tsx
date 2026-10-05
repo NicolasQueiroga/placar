@@ -43,9 +43,9 @@ export const RunoffGauge = memo(function RunoffGauge({
         <>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
             <span
+              className="fig"
               style={{
                 fontSize: 56,
-                fontWeight: 800,
                 lineHeight: 1,
                 color,
                 transition: 'color 700ms',

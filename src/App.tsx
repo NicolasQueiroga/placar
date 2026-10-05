@@ -8,6 +8,7 @@ import { RunoffGauge, RemainingMeter } from './components/RunoffGauge';
 import { UFTable } from './components/UFTable';
 import { TrendChart } from './components/TrendChart';
 import { RunoffScenarios, RunoffHistory } from './components/RunoffScenarios';
+import { Manchete } from './components/Manchete';
 import { StateResults } from './components/StateResults';
 import { CountUp } from './components/CountUp';
 import { partyColor, RACES } from './tse';
@@ -74,28 +75,9 @@ export default function App() {
           <div className="eyebrow" style={{ marginTop: 6 }}>
             {race.label} · {race.key === 'presidente' ? (turno === 1 ? '1º turno' : '2º turno — 25 de outubro') : '1º turno'} · dados oficiais TSE
           </div>
-          {race.key === 'presidente' && leader && runnerUp && (
-            <div
-              className="num"
-              style={{
-                marginTop: 10,
-                fontSize: 12,
-                color: 'var(--text-dim)',
-                lineHeight: 1.5,
-              }}
-            >
-              {national.status === 'final'
-                ? 'Resultado oficial: '
-                : `Com ${((national.sectionsCounted / national.sectionsTotal) * 100).toFixed(1).replace('.', ',')}% das seções apuradas: `}
-              <span style={{ color: partyColor(leader.party, leader.coalition), fontWeight: 600 }}>
-                {leader.ballotName} {leader.percent.toFixed(2).replace('.', ',')}%
-              </span>{' '}
-              ×{' '}
-              <span style={{ color: partyColor(runnerUp.party, runnerUp.coalition), fontWeight: 600 }}>
-                {runnerUp.ballotName} {runnerUp.percent.toFixed(2).replace('.', ',')}%
-              </span>{' '}
-              — {national.status === 'final' ? '2º turno em 25 de outubro' : 'margem de ' +
-                (leader.percent - runnerUp.percent).toFixed(2).replace('.', ',') + ' p.p.'}
+          {race.key === 'presidente' && national && (
+            <div style={{ marginTop: 14 }}>
+              <Manchete national={national} forecast={forecast} />
             </div>
           )}
         </div>

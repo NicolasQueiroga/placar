@@ -1,15 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@125,400..800&family=Fraunces:opsz,wght@9..144,300..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* Ink — warm charcoal, not pure black */
-  --bg: #17140f;
-  --bg-raised: #201c15;
-  --bg-hover: #2a251c;
-  --line: #363024;
-  --line-soft: #2a251c;
+  /* Ink — deep warm charcoal */
+  --bg: #100e09;
+  --bg-raised: #16130c;
+  --bg-hover: #1e1a11;
+  --line: rgba(250, 245, 233, 0.09);
+  --line-soft: rgba(250, 245, 233, 0.05);
 
   /* Paper */
-  --text: #efe8da;
+  --text: #f5efe1;
   --text-dim: #a89e8a;
   --text-faint: #6f6757;
 
@@ -18,8 +18,15 @@
   --amber: #e0a63c; /* counting */
   --runoff: #d94f4f;
 
+  /* Type */
   --font-display: 'Archivo', system-ui, sans-serif;
+  --font-serif: 'Fraunces', Georgia, serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Motion — the run-ease: fast start, long settle, like results coming in */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --run-ease: cubic-bezier(0.2, 0.1, 0.8, 0.9);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 * {
@@ -61,6 +68,92 @@ body {
   color: var(--text-faint);
 }
 
+/* Serif figures — the signature: big numbers set in Fraunces */
+.fig {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-variation-settings: 'opsz' 144;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+.fig sup {
+  font-size: 0.42em;
+  vertical-align: 0.95em;
+  line-height: 0;
+  margin-left: 0.06em;
+  letter-spacing: 0;
+}
+
+/* Live dot — breathing, like a heartbeat */
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green-urna);
+  display: inline-block;
+  animation: breathe 1.8s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  40%,
+  60% {
+    opacity: 1;
+  }
+}
+
+/* Staggered entrance — sections rise in sequence on load */
+@keyframes enter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+.enter {
+  animation: enter 0.5s var(--ease-out) both;
+}
+.enter:nth-child(2) {
+  animation-delay: 60ms;
+}
+.enter:nth-child(3) {
+  animation-delay: 120ms;
+}
+.enter:nth-child(4) {
+  animation-delay: 180ms;
+}
+.enter:nth-child(5) {
+  animation-delay: 240ms;
+}
+
+/* Hero sentence rotation — crossfade between data-driven manchetes */
+@keyframes sent-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sent-out {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.sent-in {
+  animation: sent-in 0.52s var(--ease-out) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -87,6 +180,11 @@ body {
 }
 .tick-up {
   animation: tick-up 1.2s ease-out;
+}
+
+/* Bars use run-ease — the "results arriving" feel */
+.bar-run {
+  transition: width 0.7s var(--run-ease), background-color 0.7s var(--ease) 0.16s;
 }
 
 /* Responsive: stack the three zones on narrow screens */
