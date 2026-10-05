@@ -253,6 +253,7 @@ export const CanvasMap = memo(function CanvasMap({
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const hoverRef = useRef<{ id: string } | null>(null);
   const tipRef = useRef<HTMLDivElement | null>(null);
+  const fitK = useRef<number>(0.0003); // k at fit() — wheel clamp reference
 
   // load geo + results once
   const geo = useRef<Geo | null>(null);
@@ -351,9 +352,10 @@ export const CanvasMap = memo(function CanvasMap({
     bctx.lineWidth = 2000; // geo meters ≈ 1px at base resolution
     bctx.stroke(geo.current.borders);
 
-    // state lines read above mun seams — thicker, near-black
-    bctx.strokeStyle = 'rgba(10,8,6,.95)';
-    bctx.lineWidth = 5200; // ≈2.6px at base res
+    // state lines read above mun seams: LIGHT line over dark seams —
+    // hierarchy by contrast, not just thickness
+    bctx.strokeStyle = 'rgba(233,227,213,.42)';
+    bctx.lineWidth = 4200; // ≈2.2px at base res, ~1px on screen at fit
     bctx.stroke(geo.current.stateBorders);
   };
 
@@ -365,6 +367,7 @@ export const CanvasMap = memo(function CanvasMap({
     const W = wrap.clientWidth;
     const H = wrap.clientHeight || 460;
     const k = Math.min(W / (x1 - x0), H / (y1 - y0)) * 0.96;
+    fitK.current = k;
     target.current = { k, ox: (W - (x1 - x0) * k) / 2 - x0 * k, oy: (H - (y1 - y0) * k) / 2 - y0 * k };
   };
 
@@ -385,13 +388,18 @@ export const CanvasMap = memo(function CanvasMap({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
-    // smooth view interpolation
+    // smooth view interpolation — RELATIVE thresholds: k lives at ~3e-4
+    // (geo meters → px), so absolute 0.001 was 4x the whole scale and made
+    // zoom/fit stop early or snap. Compare in fractions of the target.
     const v = view.current;
     const t = target.current;
     v.k += (t.k - v.k) * 0.18;
     v.ox += (t.ox - v.ox) * 0.18;
     v.oy += (t.oy - v.oy) * 0.18;
-    const still = Math.abs(t.k - v.k) < 0.001 && Math.abs(t.ox - v.ox) < 0.5 && Math.abs(t.oy - v.oy) < 0.5;
+    const still =
+      Math.abs(t.k - v.k) < Math.abs(t.k) * 0.002 &&
+      Math.abs(t.ox - v.ox) < 0.5 &&
+      Math.abs(t.oy - v.oy) < 0.5;
     if (still) {
       v.k = t.k;
       v.ox = t.ox;
@@ -536,7 +544,11 @@ export const CanvasMap = memo(function CanvasMap({
       const my = e.clientY - rect.top;
       const t = target.current;
       const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
-      const k2 = Math.min(400, Math.max(0.5, t.k * factor));
+      // k is geo-meters→px (~3e-4 at fit). 0.5 was 2000x zoom-out; 400 was
+      // beyond absurd. Clamp to [fit/4, fit×250] using the fitted k.
+      const kMin = (fitK.current ?? t.k) / 4;
+      const kMax = (fitK.current ?? t.k) * 250;
+      const k2 = Math.min(kMax, Math.max(kMin, t.k * factor));
       target.current = { k: k2, ox: mx - ((mx - t.ox) / t.k) * k2, oy: my - ((my - t.oy) / t.k) * k2 };
       schedule();
     };

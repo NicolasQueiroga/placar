@@ -49,7 +49,10 @@ function toRaceData(row: FeedRow): RaceData {
     elected: false,
   }));
   return {
-    status: (row.status === 'final' ? 'final' : 'partial') as RaceStatus,
+    // TSE's final flag ('at') doesn't survive into this file shape — the
+    // worker reads a field that isn't there, so everything lands 'partial'.
+    // Derive: 100% of sections counted = final.
+    status: (row.status === 'final' || (row.sections_total > 0 && row.sections_counted >= row.sections_total) ? 'final' : 'partial') as RaceStatus,
     generatedAt: new Date(row.fetched_at).toISOString(),
     sectionsTotal: row.sections_total,
     sectionsCounted: row.sections_counted,
