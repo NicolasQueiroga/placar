@@ -287,9 +287,9 @@ export default function App() {
                 flexWrap: 'wrap',
               }}
             >
-              <span>cor = partido líder no estado</span>
-              <span>intensidade = % apurado</span>
-              <span>borda verde = apurado</span>
+              <span>cor = partido vencedor no município</span>
+              <span>tom = vantagem (claro = disputado, forte = vitória ampla)</span>
+              <span>clique num município para aproximar · arraste para mover</span>
               <span>gerado {national.generatedAt.slice(11, 19)} BRT</span>
             </div>
           </section>
