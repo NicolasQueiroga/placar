@@ -14,13 +14,18 @@ export interface LiveState {
   error: string | null;
   loading: boolean;
   race: (typeof RACES)[number];
+  turno: 1 | 2; // presidential only: 1st vs 2nd round election code
+  setTurno: (t: 1 | 2) => void;
   setRace: (key: RaceKey) => void;
   refresh: () => void;
 }
 
 export function useElection(): LiveState {
   const [raceKey, setRaceKey] = useState<RaceKey>('presidente');
+  const [turno, setTurno] = useState<1 | 2>(1);
   const race = RACES.find((r) => r.key === raceKey) ?? RACES[0];
+  // presidential runoff runs under its own election code
+  const election = race.key === 'presidente' && turno === 2 ? ELECTIONS.presidente2 : race.election;
   const [national, setNational] = useState<RaceData | null>(null);
   const [ufProgress, setUfProgress] = useState<Map<string, UFProgress>>(new Map());
   const [ufResults, setUfResults] = useState<Map<string, RaceData>>(new Map());
@@ -34,14 +39,14 @@ export function useElection(): LiveState {
     try {
       // Acompanhamento (EA14) — same file for the whole estadual election
       const ab = await fetchAcompanhamento(
-        race.scope === 'br' ? ELECTIONS.presidente1 : ELECTIONS.estadual1,
+        race.scope === 'br' ? election : ELECTIONS.estadual1,
       ).catch(() => null);
       const ufs = ab ?? [];
       if (ufs.length > 0) setUfProgress(new Map(ufs.map((u) => [u.uf, u])));
 
       // Per-UF results for the active race (ETag-cached after first load)
       const results = await Promise.allSettled(
-        ufs.map((u) => fetchUF(u.uf, race.election, race.cargo)),
+        ufs.map((u) => fetchUF(u.uf, election, race.cargo)),
       );
       const newResults = new Map<string, RaceData>();
       results.forEach((r, i) => {
@@ -58,7 +63,7 @@ export function useElection(): LiveState {
       // National file only exists for presidente
       if (race.scope === 'br') {
         try {
-          const nat = await fetchNational(race.election, race.cargo);
+          const nat = await fetchNational(election, race.cargo);
           setNational(nat);
         } catch (e) {
           if ((e as Error).message !== 'unchanged') setError((e as Error).message);
@@ -107,7 +112,7 @@ export function useElection(): LiveState {
 
   useEffect(() => {
     mounted.current = true;
-    // reset per-race state
+    // reset per-race/turno state
     setNational(null);
     setUfResults(new Map());
     setLoading(true);
@@ -117,7 +122,7 @@ export function useElection(): LiveState {
       mounted.current = false;
       clearInterval(id);
     };
-  }, [tick]);
+  }, [tick, turno]);
 
   const forecast =
     national && race.runoff ? forecastSecondRound(national, [...ufProgress.values()], ufResults) : null;
@@ -131,6 +136,8 @@ export function useElection(): LiveState {
     error,
     loading,
     race,
+    turno,
+    setTurno,
     setRace: setRaceKey,
     refresh: () => {
       setLoading(true);

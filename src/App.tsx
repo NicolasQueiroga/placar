@@ -16,12 +16,14 @@ import type { TrendPoint } from './trend';
 import { useAlerts } from './alerts';
 
 export default function App() {
-  const { national, ufProgress, ufResults, forecast, lastUpdated, error, loading, race, setRace, refresh } =
+  const { national, ufProgress, ufResults, forecast, lastUpdated, error, loading, race, setRace, turno, setTurno, refresh } =
     useElection();
   const [now, setNow] = useState(Date.now());
-  const [trend, setTrend] = useState<TrendPoint[]>(() => loadTrend());
-  const { alerts, soundOn, toggleSound, dismiss } = useAlerts(national, ufResults);
-  const trendRace = useRef(race.key);
+  // trend + alerts memory are per race AND per turno
+  const seriesKey = `${race.key}:${turno}`;
+  const [trend, setTrend] = useState<TrendPoint[]>(() => loadTrend(seriesKey));
+  const { alerts, soundOn, toggleSound, dismiss } = useAlerts(national, ufResults, seriesKey);
+  const trendRace = useRef(seriesKey);
 
   // heartbeat for "updated Xs ago"
   useEffect(() => {
@@ -32,13 +34,13 @@ export default function App() {
   // record trend points when national data changes (per-race reset)
   useEffect(() => {
     if (!national) return;
-    if (trendRace.current !== race.key) {
-      trendRace.current = race.key;
-      setTrend(loadTrend());
-      return; // don't record the first load of a new race into the wrong series
+    if (trendRace.current !== seriesKey) {
+      trendRace.current = seriesKey;
+      setTrend(loadTrend(seriesKey));
+      return; // don't record the first load of a new series into the wrong bucket
     }
-    setTrend((prev) => appendTrend(prev, national));
-  }, [national, race.key]);
+    setTrend((prev) => appendTrend(prev, national, seriesKey));
+  }, [national, seriesKey]);
 
   const ago = lastUpdated ? Math.max(0, Math.round((now - lastUpdated) / 1000)) : null;
   const leader = national?.candidates[0];
@@ -77,7 +79,7 @@ export default function App() {
             Placar
           </h1>
           <div className="eyebrow" style={{ marginTop: 6 }}>
-            {race.label} · 1º turno · dados oficiais TSE
+            {race.label} · {race.key === 'presidente' ? (turno === 1 ? '1º turno' : '2º turno — 25 de outubro') : '1º turno'} · dados oficiais TSE
           </div>
           {race.key === 'presidente' && leader && runnerUp && (
             <div
@@ -168,6 +170,29 @@ export default function App() {
             {r.label}
           </button>
         ))}
+        {race.key === 'presidente' && (
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 2, alignSelf: 'center' }}>
+            {([1, 2] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTurno(t)}
+                aria-pressed={turno === t}
+                style={{
+                  background: turno === t ? 'var(--bg-raised)' : 'transparent',
+                  border: `1px solid ${turno === t ? 'var(--line)' : 'var(--line-soft)'}`,
+                  color: turno === t ? 'var(--text)' : 'var(--text-faint)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  padding: '5px 12px',
+                  cursor: 'pointer',
+                  borderRadius: 3,
+                }}
+              >
+                {t === 1 ? '1º turno' : '2º turno'}
+              </button>
+            ))}
+          </span>
+        )}
       </nav>
 
       {/* Alerts */}
