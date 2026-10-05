@@ -11,7 +11,8 @@ import { RunoffScenarios, RunoffHistory } from './components/RunoffScenarios';
 import { Manchete } from './components/Manchete';
 import { StateResults } from './components/StateResults';
 import { CountUp } from './components/CountUp';
-import { partyColor, RACES } from './tse';
+import { Duel } from './components/Duel';
+import { RACES } from './tse';
 import { appendTrend, loadTrend } from './trend';
 import type { TrendPoint } from './trend';
 import { useAlerts } from './alerts';
@@ -19,7 +20,6 @@ import { useAlerts } from './alerts';
 export default function App() {
   const { national, ufProgress, ufResults, forecast, lastUpdated, error, loading, race, setRace, turno, setTurno, refresh } =
     useElection();
-  // NOTE: no 1s heartbeat at App level — UpdatedAgo ticks itself
   // trend + alerts memory are per race AND per turno
   const seriesKey = `${race.key}:${turno}`;
   const [trend, setTrend] = useState<TrendPoint[]>(() => loadTrend(seriesKey));
@@ -45,136 +45,103 @@ export default function App() {
     return (national.turnout / national.electorsCounted) * 100;
   }, [national]);
 
+  const runoffConfirmed =
+    race.key === 'presidente' &&
+    turno === 1 &&
+    national?.status === 'final' &&
+    leader &&
+    leader.percent < 50;
+
   return (
-    <div style={{ maxWidth: 1440, margin: '0 auto', padding: '20px clamp(16px, 3vw, 40px) 48px' }}>
-      {/* Masthead */}
-      <header
+    <div style={{ maxWidth: 1240, margin: '0 auto', padding: '0 clamp(16px, 3vw, 40px) 48px' }}>
+      {/* Sticky glass bar — race switcher + live status, always visible */}
+      <div
+        className="glass"
         style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
           display: 'flex',
+          alignItems: 'center',
           justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          flexWrap: 'wrap',
           gap: 12,
-          borderBottom: '1px solid var(--line)',
-          paddingBottom: 14,
+          padding: '10px 0',
+          marginBottom: 8,
         }}
       >
-        <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 'clamp(22px, 3.4vw, 34px)',
-              fontWeight: 800,
-              letterSpacing: '-0.01em',
-              textTransform: 'uppercase',
-              lineHeight: 1,
-            }}
-          >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <span className="live-dot" aria-hidden />
+          <span style={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.02em', fontSize: 15 }}>
             Placar
-          </h1>
-          <div className="eyebrow" style={{ marginTop: 6 }}>
-            {race.label} · {race.key === 'presidente' ? (turno === 1 ? '1º turno' : '2º turno — 25 de outubro') : '1º turno'} · dados oficiais TSE
-          </div>
-          {race.key === 'presidente' && national && (
-            <div style={{ marginTop: 14 }}>
-              <Manchete national={national} forecast={forecast} />
-            </div>
-          )}
+          </span>
+          <nav role="tablist" aria-label="Cargos" style={{ display: 'flex', gap: 2 }}>
+            {RACES.map((r) => (
+              <button
+                key={r.key}
+                role="tab"
+                aria-selected={r.key === race.key}
+                onClick={() => setRace(r.key)}
+                className="tab"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: `2px solid ${r.key === race.key ? 'var(--text)' : 'transparent'}`,
+                  color: r.key === race.key ? 'var(--text)' : 'var(--text-faint)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  padding: '6px 12px 8px',
+                  cursor: 'pointer',
+                }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </nav>
         </div>
-        <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          {race.key === 'presidente' && (
+            <span style={{ display: 'flex', gap: 2 }}>
+              {([1, 2] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTurno(t)}
+                  aria-pressed={turno === t}
+                  style={{
+                    background: turno === t ? 'var(--bg-hover)' : 'transparent',
+                    border: `1px solid ${turno === t ? 'var(--line)' : 'var(--line-soft)'}`,
+                    color: turno === t ? 'var(--text)' : 'var(--text-faint)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    borderRadius: 3,
+                  }}
+                >
+                  {t === 1 ? '1º' : '2º'}
+                </button>
+              ))}
+            </span>
+          )}
           <button
             onClick={toggleSound}
             aria-pressed={soundOn}
-            style={{
-              background: 'transparent',
-              border: `1px solid ${soundOn ? 'var(--amber)' : 'var(--line)'}`,
-              color: soundOn ? 'var(--amber)' : 'var(--text-dim)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              padding: '6px 14px',
-              borderRadius: 3,
-              cursor: 'pointer',
-            }}
+            className="ctl"
+            style={{ ['--c' as string]: soundOn ? 'var(--amber)' : 'var(--text-faint)' }}
           >
-            {soundOn ? 'som: ligado' : 'som: mudo'}
+            {soundOn ? 'som on' : 'som off'}
           </button>
-          <button
-            onClick={refresh}
-            style={{
-              background: 'transparent',
-              border: `1px solid ${loading ? 'var(--green-urna)' : 'var(--line)'}`,
-              color: 'var(--text-dim)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              padding: '6px 14px',
-              borderRadius: 3,
-              cursor: 'pointer',
-            }}
-          >
-            {loading ? 'atualizando…' : 'atualizar'}
-          </button>
-          <UpdatedAgo at={lastUpdated} />
+          <UpdatedAgo at={lastUpdated} loading={loading} onRefresh={refresh} />
         </div>
-      </header>
-
-      {/* Race tabs */}
-      <nav
-        role="tablist"
-        aria-label="Cargos"
-        style={{ display: 'flex', gap: 2, marginTop: 18, flexWrap: 'wrap' }}
-      >
-        {RACES.map((r) => (
-          <button
-            key={r.key}
-            role="tab"
-            aria-selected={r.key === race.key}
-            onClick={() => setRace(r.key)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              borderBottom: `2px solid ${r.key === race.key ? 'var(--text)' : 'transparent'}`,
-              color: r.key === race.key ? 'var(--text)' : 'var(--text-faint)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 12,
-              padding: '7px 14px 9px',
-              cursor: 'pointer',
-            }}
-          >
-            {r.label}
-          </button>
-        ))}
-        {race.key === 'presidente' && (
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 2, alignSelf: 'center' }}>
-            {([1, 2] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTurno(t)}
-                aria-pressed={turno === t}
-                style={{
-                  background: turno === t ? 'var(--bg-raised)' : 'transparent',
-                  border: `1px solid ${turno === t ? 'var(--line)' : 'var(--line-soft)'}`,
-                  color: turno === t ? 'var(--text)' : 'var(--text-faint)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  padding: '5px 12px',
-                  cursor: 'pointer',
-                  borderRadius: 3,
-                }}
-              >
-                {t === 1 ? '1º turno' : '2º turno'}
-              </button>
-            ))}
-          </span>
-        )}
-      </nav>
+      </div>
 
       {/* Alerts */}
       {alerts.length > 0 && (
-        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {alerts.map((a) => (
             <div
               key={a.id}
               role="status"
+              className="enter"
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -218,74 +185,42 @@ export default function App() {
           }}
         >
           Não foi possível carregar os dados do TSE. Verifique a conexão — o app tenta de novo a cada
-          30 segundos.
+          15 segundos.
         </div>
       )}
 
       {!national ? (
-        <div style={{ marginTop: 80, textAlign: 'center', color: 'var(--text-dim)' }}>
+        <div style={{ marginTop: 120, textAlign: 'center', color: 'var(--text-dim)' }}>
           <div className="num" style={{ fontSize: 13 }}>
             carregando apuração…
           </div>
         </div>
       ) : (
-        <main
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(300px, 380px) 1fr minmax(280px, 340px)',
-            gap: 32,
-            marginTop: 24,
-            alignItems: 'start',
-          }}
-          className="dashboard"
-        >
-          {/* LEFT: live count + forecast */}
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-            {race.scope === 'br' && (
-              <div>
-                <div className="eyebrow">Liderança nacional</div>
-                <div style={{ marginTop: 4 }}>
-                  {leader && (
-                    <span
-                      style={{
-                        fontSize: 42,
-                        fontWeight: 800,
-                        lineHeight: 1,
-                        color: partyColor(leader.party, leader.coalition),
-                      }}
-                    >
-                      {leader.ballotName}
-                    </span>
-                  )}
-                </div>
-                {leader && runnerUp && (
-                  <div className="num" style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 6 }}>
-                    +{(leader.percent - runnerUp.percent).toFixed(2).replace('.', ',')} p.p. sobre{' '}
-                    {runnerUp.ballotName} ({runnerUp.party})
-                  </div>
-                )}
+        <>
+          {/* HERO — the front page: kick, manchete, duel */}
+          <section className="enter" style={{ paddingBottom: 26, borderBottom: '1px solid var(--line)' }}>
+            <div className="eyebrow" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <span>
+                {race.label} · {race.key === 'presidente' ? (turno === 1 ? '1º turno' : '2º turno — 25 de outubro') : '1º turno'} · dados oficiais TSE
+              </span>
+              <span className="num">
+                {((national.sectionsCounted / national.sectionsTotal) * 100).toFixed(1).replace('.', ',')}% apurado
+              </span>
+            </div>
+
+            {race.key === 'presidente' && (
+              <div style={{ marginTop: 16 }}>
+                <Manchete national={national} forecast={forecast} />
               </div>
             )}
 
-            {race.scope === 'br' && forecast && <RunoffGauge forecast={forecast} national={national} />}
-            {race.key === 'governador' && <GovernorSummary ufProgress={ufProgress} ufResults={ufResults} />}
-
-            <RemainingMeter national={national} />
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
-              <Stat label="Comparecimento" value={turnoutPct} suffix="%" />
-              <Stat
-                label="Abstenção"
-                value={national.electorsCounted ? (national.abstention / national.electorsCounted) * 100 : 0}
-                suffix="%"
-              />
-              <Stat label="Brancos" value={national.blank} />
-              <Stat label="Nulos" value={national.nullVotes} />
-            </div>
+            {leader && runnerUp && (
+              <Duel a={leader} b={runnerUp} runoff={!!runoffConfirmed} />
+            )}
           </section>
 
-          {/* CENTER: map + state board + trend — all passive */}
-          <section>
+          {/* MAP — full width, the visual anchor */}
+          <section className="enter" style={{ marginTop: 26 }}>
             <div
               style={{
                 border: '1px solid var(--line)',
@@ -312,26 +247,60 @@ export default function App() {
               <span>borda verde = apurado</span>
               <span>gerado {national.generatedAt.slice(11, 19)} BRT</span>
             </div>
-
-            <div style={{ marginTop: 20 }}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>
-                Placar por estado — {race.label}
-              </div>
-              <UFBoard ufProgress={ufProgress} ufResults={ufResults} />
-            </div>
-
-            <div style={{ marginTop: 20 }}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>
-                Evolução — {race.label} (história desta sessão)
-              </div>
-              <TrendChart points={trend} candidates={national.candidates} />
-            </div>
           </section>
 
-          {/* RIGHT: leaderboard + UF table */}
-          <section style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+          {/* STRIP — counting meter + key stats in one hairline row */}
+          <section
+            className="enter"
+            style={{
+              marginTop: 26,
+              paddingTop: 18,
+              borderTop: '1px solid var(--line)',
+              display: 'flex',
+              gap: 'clamp(20px, 4vw, 56px)',
+              flexWrap: 'wrap',
+              alignItems: 'baseline',
+            }}
+          >
+            {race.scope === 'br' && forecast && (
+              <div style={{ minWidth: 200, flex: '0 1 auto' }}>
+                <RunoffGauge forecast={forecast} national={national} />
+              </div>
+            )}
+            {race.key === 'governador' && <GovernorSummary ufProgress={ufProgress} ufResults={ufResults} />}
+            <RemainingMeter national={national} />
+            <Stat label="Comparecimento" value={turnoutPct} suffix="%" />
+            <Stat
+              label="Abstenção"
+              value={national.electorsCounted ? (national.abstention / national.electorsCounted) * 100 : 0}
+              suffix="%"
+            />
+            <Stat label="Brancos" value={national.blank} />
+            <Stat label="Nulos" value={national.nullVotes} />
+          </section>
+
+          {/* BOARD — state scoreboard, full width */}
+          <section className="enter" style={{ marginTop: 26 }}>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>
+              Placar por estado — {race.label}
+            </div>
+            <UFBoard ufProgress={ufProgress} ufResults={ufResults} />
+          </section>
+
+          {/* TWO COLUMNS — results detail + slowest UFs */}
+          <section
+            className="enter"
+            style={{
+              marginTop: 26,
+              paddingTop: 20,
+              borderTop: '1px solid var(--line)',
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)',
+              gap: 'clamp(20px, 4vw, 48px)',
+            }}
+          >
             <div>
-              <div className="eyebrow" style={{ marginBottom: 4 }}>
+              <div className="eyebrow" style={{ marginBottom: 8 }}>
                 {race.scope === 'br'
                   ? 'Votação nominal — Brasil'
                   : race.key === 'governador'
@@ -357,14 +326,22 @@ export default function App() {
               <UFTable ufProgress={ufProgress} />
             </div>
           </section>
-        </main>
-      )}
 
-      {/* 2nd-round scenarios — only meaningful for the presidential race */}
-      {national && race.key === 'presidente' && (
-        <>
-          <RunoffScenarios national={national} />
-          <RunoffHistory />
+          {/* TREND — full width */}
+          <section className="enter" style={{ marginTop: 26 }}>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>
+              Evolução — {race.label} (história desta sessão)
+            </div>
+            <TrendChart points={trend} candidates={national.candidates} />
+          </section>
+
+          {/* SCENARIOS — presidential only */}
+          {race.key === 'presidente' && (
+            <section className="enter" style={{ marginTop: 26 }}>
+              <RunoffScenarios national={national} />
+              <RunoffHistory />
+            </section>
+          )}
         </>
       )}
 
@@ -382,7 +359,7 @@ export default function App() {
           gap: 8,
         }}
       >
-        <span>fonte: resultados.tse.jus.br · arquivo EA20 unificado + EA14 acompanhamento</span>
+        <span>fonte: resultados.tse.jus.br · feed próprio com snapshots a cada 2 min</span>
         <span>modelo de 2º turno: estimativa estatística, não é resultado oficial</span>
       </footer>
     </div>
@@ -391,9 +368,9 @@ export default function App() {
 
 function Stat({ label, value, suffix = '' }: { label: string; value: number; suffix?: string }) {
   return (
-    <div>
+    <div style={{ minWidth: 90 }}>
       <div className="eyebrow">{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, marginTop: 2 }}>
+      <div className="fig" style={{ fontSize: 26, marginTop: 2 }}>
         <CountUp
           value={value}
           format={(v) =>
@@ -421,25 +398,22 @@ function GovernorSummary({
   const decided = states.filter((s) => s.decided).length;
   const total = states.length || 27;
   return (
-    <div>
+    <div style={{ minWidth: 200 }}>
       <div className="eyebrow">Governadores</div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
-        <span style={{ fontSize: 42, fontWeight: 800, lineHeight: 1, color: 'var(--green-urna)' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 2 }}>
+        <span className="fig" style={{ fontSize: 42, lineHeight: 1, color: 'var(--green-urna)' }}>
           {decided}
         </span>
-        <span className="num" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+        <span className="num" style={{ fontSize: 12, color: 'var(--text-dim)' }}>
           de {total} estados decididos no 1º turno
         </span>
-      </div>
-      <div className="num" style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6, lineHeight: 1.5 }}>
-        estados sem maioria absoluta vão a 2º turno em 25 de outubro
       </div>
     </div>
   );
 }
 
 /** Self-ticking "updated Xs ago" — isolates the 1s re-render from the dashboard. */
-function UpdatedAgo({ at }: { at: number | null }) {
+function UpdatedAgo({ at, loading, onRefresh }: { at: number | null; loading: boolean; onRefresh: () => void }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -447,8 +421,12 @@ function UpdatedAgo({ at }: { at: number | null }) {
   }, []);
   const ago = at ? Math.max(0, Math.round((now - at) / 1000)) : null;
   return (
-    <div className="num" style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
-      {ago === null ? 'conectando…' : `há ${ago}s`} · a cada 15s
-    </div>
+    <button
+      onClick={onRefresh}
+      className="ctl"
+      style={{ ['--c' as string]: loading ? 'var(--green-urna)' : 'var(--text-faint)' }}
+    >
+      {ago === null ? 'conectando…' : `há ${ago}s`}
+    </button>
   );
 }

@@ -187,18 +187,34 @@ body {
   transition: width 0.7s var(--run-ease), background-color 0.7s var(--ease) 0.16s;
 }
 
-/* Responsive: stack the three zones on narrow screens */
-@media (max-width: 1100px) {
-  .dashboard {
-    grid-template-columns: 1fr 1fr !important;
-  }
-  .dashboard > section:first-child {
-    grid-column: 1 / -1;
-  }
+/* Sticky glass bar */
+.glass {
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
 }
 
-@media (max-width: 760px) {
-  .dashboard {
+/* Small mono control buttons (sound, refresh) */
+.ctl {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--c, var(--text-faint));
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color var(--hover), border-color var(--hover);
+}
+.ctl:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+/* Responsive: two-column detail section stacks on narrow screens */
+@media (max-width: 900px) {
+  section[style*='grid-template-columns'] {
     grid-template-columns: 1fr !important;
   }
 }
