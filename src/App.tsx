@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useElection } from './useElection';
+import type { RaceData, UFProgress } from './types';
 import { Leaderboard } from './components/Leaderboard';
 import { BrazilMap } from './components/BrazilMap';
 import { UFBoard } from './components/UFBoard';
@@ -7,6 +8,7 @@ import { RunoffGauge, RemainingMeter } from './components/RunoffGauge';
 import { UFTable } from './components/UFTable';
 import { TrendChart } from './components/TrendChart';
 import { RunoffScenarios, RunoffHistory } from './components/RunoffScenarios';
+import { StateResults } from './components/StateResults';
 import { CountUp } from './components/CountUp';
 import { partyColor, RACES } from './tse';
 import { appendTrend, loadTrend } from './trend';
@@ -241,31 +243,34 @@ export default function App() {
         >
           {/* LEFT: live count + forecast */}
           <section style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-            <div>
-              <div className="eyebrow">Liderança nacional</div>
-              <div style={{ marginTop: 4 }}>
-                {leader && (
-                  <span
-                    style={{
-                      fontSize: 42,
-                      fontWeight: 800,
-                      lineHeight: 1,
-                      color: partyColor(leader.party, leader.coalition),
-                    }}
-                  >
-                    {leader.ballotName}
-                  </span>
+            {race.scope === 'br' && (
+              <div>
+                <div className="eyebrow">Liderança nacional</div>
+                <div style={{ marginTop: 4 }}>
+                  {leader && (
+                    <span
+                      style={{
+                        fontSize: 42,
+                        fontWeight: 800,
+                        lineHeight: 1,
+                        color: partyColor(leader.party, leader.coalition),
+                      }}
+                    >
+                      {leader.ballotName}
+                    </span>
+                  )}
+                </div>
+                {leader && runnerUp && (
+                  <div className="num" style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 6 }}>
+                    +{(leader.percent - runnerUp.percent).toFixed(2).replace('.', ',')} p.p. sobre{' '}
+                    {runnerUp.ballotName} ({runnerUp.party})
+                  </div>
                 )}
               </div>
-              {leader && runnerUp && (
-                <div className="num" style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 6 }}>
-                  +{(leader.percent - runnerUp.percent).toFixed(2).replace('.', ',')} p.p. sobre{' '}
-                  {runnerUp.ballotName} ({runnerUp.party})
-                </div>
-              )}
-            </div>
+            )}
 
-            {forecast && <RunoffGauge forecast={forecast} national={national} />}
+            {race.scope === 'br' && forecast && <RunoffGauge forecast={forecast} national={national} />}
+            {race.key === 'governador' && <GovernorSummary ufProgress={ufProgress} ufResults={ufResults} />}
 
             <RemainingMeter national={national} />
 
@@ -329,9 +334,23 @@ export default function App() {
           <section style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
             <div>
               <div className="eyebrow" style={{ marginBottom: 4 }}>
-                Votação nominal — {race.scope === 'br' ? 'Brasil' : 'soma das UFs carregadas'}
+                {race.scope === 'br'
+                  ? 'Votação nominal — Brasil'
+                  : race.key === 'governador'
+                    ? 'Governador — resultado por estado'
+                    : race.key === 'senador'
+                      ? 'Senador — líderes por estado'
+                      : 'Dep. Federal — mais votados por estado'}
               </div>
-              <Leaderboard national={national} />
+              {race.scope === 'br' ? (
+                <Leaderboard national={national} />
+              ) : (
+                <StateResults
+                  ufProgress={ufProgress}
+                  ufResults={ufResults}
+                  runoff={race.runoff}
+                />
+              )}
             </div>
             <div>
               <div className="eyebrow" style={{ marginBottom: 8 }}>
@@ -383,6 +402,39 @@ function Stat({ label, value, suffix = '' }: { label: string; value: number; suf
             suffix === '%' ? `${v.toFixed(1).replace('.', ',')}${suffix}` : v.toLocaleString('pt-BR')
           }
         />
+      </div>
+    </div>
+  );
+}
+
+/** For governor races: how many states are decided vs going to a runoff. */
+function GovernorSummary({
+  ufProgress,
+  ufResults,
+}: {
+  ufProgress: Map<string, UFProgress>;
+  ufResults: Map<string, RaceData>;
+}) {
+  const states = [...ufProgress.values()].map((u) => {
+    const leader = ufResults.get(u.uf)?.candidates[0];
+    const nearDone = u.percentSections >= 99.9 || u.status === 'final';
+    return { decided: !!(leader && nearDone && leader.percent > 50) };
+  });
+  const decided = states.filter((s) => s.decided).length;
+  const total = states.length || 27;
+  return (
+    <div>
+      <div className="eyebrow">Governadores</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
+        <span style={{ fontSize: 42, fontWeight: 800, lineHeight: 1, color: 'var(--green-urna)' }}>
+          {decided}
+        </span>
+        <span className="num" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+          de {total} estados decididos no 1º turno
+        </span>
+      </div>
+      <div className="num" style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6, lineHeight: 1.5 }}>
+        estados sem maioria absoluta vão a 2º turno em 25 de outubro
       </div>
     </div>
   );
