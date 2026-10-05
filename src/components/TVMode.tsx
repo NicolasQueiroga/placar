@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import type { RaceData, UFProgress } from '../types';
 import { partyColor } from '../tse';
 import { CountUp } from './CountUp';
-import { BrazilMap } from './BrazilMap';
+import { CanvasMap } from './CanvasMap';
 
 const pct = (v: number) => `${v.toFixed(2).replace('.', ',')}%`;
 
@@ -93,7 +93,7 @@ export const TVMode = memo(function TVMode({
         {panel === 'map' && (
           <div style={{ flex: 1, minHeight: 0, display: 'flex', justifyContent: 'center' }}>
             <div style={{ width: '100%', maxWidth: 900 }}>
-              <BrazilMap ufProgress={ufProgress} ufResults={ufResults} />
+              <CanvasMap ufProgress={ufProgress} ufResults={ufResults} />
             </div>
           </div>
         )}

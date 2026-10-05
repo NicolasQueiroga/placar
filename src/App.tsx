@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useElection } from './useElection';
 import type { RaceData, UFProgress } from './types';
 import { Leaderboard } from './components/Leaderboard';
-import { BrazilMap } from './components/BrazilMap';
+import { CanvasMap } from './components/CanvasMap';
 import { UFBoard } from './components/UFBoard';
 import { RunoffGauge, RemainingMeter } from './components/RunoffGauge';
 import { UFTable } from './components/UFTable';
@@ -274,7 +274,7 @@ export default function App() {
                 background: 'var(--bg-raised)',
               }}
             >
-              <BrazilMap ufProgress={ufProgress} ufResults={ufResults} />
+              <CanvasMap ufProgress={ufProgress} ufResults={ufResults} mode={race.key} />
             </div>
             <div
               className="num"
