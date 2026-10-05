@@ -339,8 +339,8 @@ export default function App() {
                   : race.key === 'governador'
                     ? 'Governador — resultado por estado'
                     : race.key === 'senador'
-                      ? 'Senador — líderes por estado'
-                      : 'Dep. Federal — mais votados por estado'}
+                      ? 'Senador — 2 mais votados por estado'
+                      : 'Dep. Federal — 2 mais votados por estado'}
               </div>
               {race.scope === 'br' ? (
                 <Leaderboard national={national} />
@@ -348,7 +348,7 @@ export default function App() {
                 <StateResults
                   ufProgress={ufProgress}
                   ufResults={ufResults}
-                  runoff={race.runoff}
+                  kind={race.key === 'governador' ? 'runoff' : 'plurality'}
                 />
               )}
             </div>

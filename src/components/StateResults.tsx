@@ -1,46 +1,59 @@
 import { memo, useMemo } from 'react';
-import type { RaceData, UFProgress } from '../types';
+import type { Candidate, RaceData, UFProgress } from '../types';
 import { partyColor } from '../tse';
 
 const pct1 = (v: number) => v.toFixed(1).replace('.', ',');
 
+type RowKind = 'runoff' | 'plurality'; // governador vs senador/dep.federal
+
+interface StateRow {
+  uf: string;
+  electors: number;
+  nearDone: boolean;
+  top: Candidate[]; // leader first; for plurality races, top-2
+}
+
 /**
- * Per-state results for uf-scoped races (governador, senador, dep. federal).
- * These are 27 independent races — a national sum would be meaningless,
- * so each state gets its own row: leader, runner-up, and outcome chip.
+ * Per-state results for uf-scoped races. These are 27 independent races —
+ * a national sum would be meaningless. Outcome language per race kind:
+ *  - runoff races (governador): 1º TURNO (>50%) or 2º TURNO chips
+ *  - plurality races (senador, dep.federal): top-2 shown, no threshold chips
  */
 export const StateResults = memo(function StateResults({
   ufProgress,
   ufResults,
-  runoff,
+  kind,
 }: {
   ufProgress: Map<string, UFProgress>;
   ufResults: Map<string, RaceData>;
-  runoff: boolean; // race can go to a 2nd round (governador)
+  kind: RowKind;
 }) {
-  const rows = useMemo(() => {
-    return [...ufProgress.values()]
-      .map((u) => {
-        const res = ufResults.get(u.uf);
-        const leader = res?.candidates[0];
-        const runnerUp = res?.candidates[1];
-        const counted = u.percentSections;
-        const nearDone = counted >= 99.9 || u.status === 'final';
-        return { u, leader, runnerUp, nearDone };
-      })
-      .sort((a, b) => b.u.electorsTotal - a.u.electorsTotal);
-  }, [ufProgress, ufResults]);
+  const rows = useMemo<StateRow[]>(
+    () =>
+      [...ufProgress.values()]
+        .map((u) => {
+          const res = ufResults.get(u.uf);
+          const nearDone = u.percentSections >= 99.9 || u.status === 'final';
+          return {
+            uf: u.uf,
+            electors: u.electorsTotal,
+            nearDone,
+            top: res?.candidates.slice(0, 2) ?? [],
+          };
+        })
+        .sort((a, b) => b.electors - a.electors),
+    [ufProgress, ufResults],
+  );
 
   return (
     <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-      {rows.map(({ u, leader, runnerUp, nearDone }) => {
+      {rows.map(({ uf, nearDone, top }) => {
+        const [leader, second] = top;
         const color = leader ? partyColor(leader.party, leader.coalition) : 'var(--text-faint)';
-        // outcome: only meaningful when counting is (near) complete
         const decided = leader && nearDone && leader.percent > 50;
-        const runoffState = runoff && leader && nearDone && leader.percent <= 50;
         return (
           <li
-            key={u.uf}
+            key={uf}
             style={{
               display: 'grid',
               gridTemplateColumns: '34px 1fr auto',
@@ -51,39 +64,74 @@ export const StateResults = memo(function StateResults({
             }}
           >
             <span className="num" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-dim)' }}>
-              {u.uf}
+              {uf}
             </span>
             <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: leader ? color : 'var(--text-faint)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {leader ? leader.ballotName : 'aguardando'}
-              </div>
-              <div className="num" style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
-                {leader ? `${leader.party}${runnerUp ? ` · ${pct1(runnerUp.percent)}% ${runnerUp.ballotName}` : ''}` : ''}
-              </div>
+              {kind === 'runoff' ? (
+                /* governador: leader + runner-up share */
+                <>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: leader ? color : 'var(--text-faint)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {leader ? leader.ballotName : 'aguardando'}
+                  </div>
+                  <div className="num" style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
+                    {leader
+                      ? `${leader.party}${second ? ` · ${pct1(second.percent)}% ${second.ballotName}` : ''}`
+                      : ''}
+                  </div>
+                </>
+              ) : (
+                /* senador/dep.federal: top-2 side by side — both may be elected */
+                <div style={{ display: 'flex', gap: 12, minWidth: 0, flexWrap: 'wrap' }}>
+                  {top.map((c, i) => (
+                    <div key={c.id} style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: i === 0 ? 700 : 500,
+                          color: i === 0 ? partyColor(c.party, c.coalition) : 'var(--text-dim)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {c.ballotName}
+                      </div>
+                      <div className="num" style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
+                        {c.party} · {pct1(c.percent)}%
+                      </div>
+                    </div>
+                  ))}
+                  {top.length === 0 && (
+                    <div className="num" style={{ fontSize: 12, color: 'var(--text-faint)' }}>
+                      aguardando
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div style={{ textAlign: 'right' }}>
               <div className="num" style={{ fontSize: 14, fontWeight: 600 }}>
                 {leader ? `${pct1(leader.percent)}%` : '—'}
               </div>
-              {nearDone && leader && (
+              {kind === 'runoff' && nearDone && leader && (
                 <div
                   className="num"
                   style={{
                     fontSize: 9,
                     marginTop: 2,
-                    color: decided ? 'var(--green-urna)' : runoffState ? 'var(--runoff)' : 'var(--text-faint)',
+                    color: decided ? 'var(--green-urna)' : 'var(--runoff)',
                   }}
                 >
-                  {decided ? '1º TURNO' : runoffState ? '2º TURNO' : ''}
+                  {decided ? '1º TURNO' : '2º TURNO'}
                 </div>
               )}
             </div>
