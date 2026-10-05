@@ -1,0 +1,11 @@
+name = "placar-feed"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "placar-snapshots"
+database_id = "17844bef-5990-4e3e-a3ea-fad34fce5c33"
+
+[triggers]
+crons = ["*/2 * * * *", "*/10 * * * *"]
