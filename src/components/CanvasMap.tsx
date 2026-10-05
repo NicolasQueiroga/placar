@@ -43,14 +43,16 @@ function decodeTopo(topo: Topo): { muns: MunShape[]; box: [number, number, numbe
   const [sx, sy] = transform.scale;
   const [tx, ty] = transform.translate;
 
-  // decode all arcs to absolute points
+  // decode all arcs to absolute points.
+  // topo y is NORTHING (grows up — RR~10.4M, RS~6.5M); canvas y grows down.
+  // Flip: y' = -y, then the bbox fit centers everything. North ends up on top.
   const points: number[][][] = arcs.map((arc) => {
     let x = 0;
     let y = 0;
     return arc.map((d) => {
       x += d[0];
       y += d[1];
-      return [x * sx + tx, y * sy + ty];
+      return [x * sx + tx, -(y * sy + ty)];
     });
   });
 
