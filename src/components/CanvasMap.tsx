@@ -410,10 +410,18 @@ export const CanvasMap = memo(function CanvasMap({
     const key = Math.floor(gy / grid.CELL) * 100000 + Math.floor(gx / grid.CELL);
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return null;
-    for (const m of grid.map.get(key) ?? []) {
-      if (gx >= m.box[0] && gx <= m.box[2] && gy >= m.box[1] && gy <= m.box[3]) {
-        if (ctx.isPointInPath(m.path, gx, gy)) return m;
+    // isPointInPath tests against the CURRENT transform — reset to identity
+    // so the point is interpreted in raw geo coordinates
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    try {
+      for (const m of grid.map.get(key) ?? []) {
+        if (gx >= m.box[0] && gx <= m.box[2] && gy >= m.box[1] && gy <= m.box[3]) {
+          if (ctx.isPointInPath(m.path, gx, gy)) return m;
+        }
       }
+    } finally {
+      ctx.restore();
     }
     return null;
   };
@@ -452,17 +460,25 @@ export const CanvasMap = memo(function CanvasMap({
     schedule();
   }, [hover]);
 
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const rect = canvasRef.current!.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const t = target.current;
-    const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
-    const k2 = Math.min(400, Math.max(0.5, t.k * factor));
-    target.current = { k: k2, ox: mx - ((mx - t.ox) / t.k) * k2, oy: my - ((my - t.oy) / t.k) * k2 };
-    schedule();
-  };
+  // native wheel listener — React's onWheel is passive, preventDefault() is ignored
+  // there and the page scrolls instead of the map zooming
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const t = target.current;
+      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      const k2 = Math.min(400, Math.max(0.5, t.k * factor));
+      target.current = { k: k2, ox: mx - ((mx - t.ox) / t.k) * k2, oy: my - ((my - t.oy) / t.k) * k2 };
+      schedule();
+    };
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, [loaded]);
 
   const onClick = (e: React.MouseEvent) => {
     if (dragRef.current?.moved) return;
@@ -528,7 +544,6 @@ export const CanvasMap = memo(function CanvasMap({
           dragRef.current = null;
           setHover(null);
         }}
-        onWheel={onWheel}
         onClick={onClick}
       />
       {tip && hover && (
