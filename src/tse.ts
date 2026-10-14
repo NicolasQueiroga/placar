@@ -310,7 +310,7 @@ const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 // ---- Party colors (Brazilian convention) ----
 export function partyColor(party: string, coalition: string): string {
   if (/PT|PC do B|PV|Federa/i.test(coalition)) return '#C8102E'; // PT red
-  if (/PL|Liberal/i.test(party)) return '#FF8200'; // PL orange-yellow
+  if (/PL|Liberal/i.test(party)) return '#0F5FC0'; // PL blue (election-map convention)
   if (/PSDB/i.test(party)) return '#0080FF';
   if (/UNIÃO|UNIAO/i.test(party)) return '#0F7B3F';
   if (/MDB|PMDB/i.test(party)) return '#2E7D32';

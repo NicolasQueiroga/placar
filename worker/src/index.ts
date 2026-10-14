@@ -173,16 +173,32 @@ async function collectRace(env: Env, raceKeys: string[], withHistory: boolean): 
   return { stored: rows.length };
 }
 
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Accept',
+};
+
+function jsonWithCors(data: unknown, init?: ResponseInit): Response {
+  const res = Response.json(data, init);
+  for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
+  return res;
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS });
+    }
 
     if (url.pathname === '/feed') {
       const { results } = await env.DB.prepare(
         `SELECT race, uf, sections_counted, sections_total, electors, valid, turnout, candidates, status, fetched_at
          FROM snapshots ORDER BY race, uf`,
       ).all();
-      return Response.json(
+      return jsonWithCors(
         { ts: Date.now(), races: results },
         { headers: { 'cache-control': 'public, s-maxage=10, stale-while-revalidate=30' } },
       );
@@ -194,7 +210,7 @@ export default {
       const { results } = await env.DB.prepare(
         `SELECT ts, race, uf, sections_pct, candidates FROM history WHERE ts > ? ORDER BY ts`,
       ).bind(since).all();
-      return Response.json({ points: results }, { headers: { 'cache-control': 'public, s-maxage=60' } });
+      return jsonWithCors({ points: results }, { headers: { 'cache-control': 'public, s-maxage=60' } });
     }
 
     if (url.pathname === '/collect' && req.method === 'POST') {

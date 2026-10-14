@@ -33,6 +33,7 @@ interface MunShape {
   name: string;
   uf: string;
   path: Path2D;
+  rings: [number, number][][];
   box: [number, number, number, number]; // x0,y0,x1,y1
   cx: number;
   cy: number;
@@ -78,6 +79,7 @@ function decodeTopo(topo: Topo): Geo {
   for (const g of topo.objects.municipios.geometries) {
     const polys = g.type === 'Polygon' ? [g.arcs as number[][]] : (g.arcs as number[][][]);
     const path = new Path2D();
+    const rings: [number, number][][] = [];
     let x0 = Infinity;
     let y0 = Infinity;
     let x1 = -Infinity;
@@ -86,6 +88,7 @@ function decodeTopo(topo: Topo): Geo {
       for (const r of p) {
         const pts = ring(r);
         if (pts.length < 3) continue;
+        rings.push(pts);
         path.moveTo(pts[0][0], pts[0][1]);
         for (let k = 1; k < pts.length; k++) path.lineTo(pts[k][0], pts[k][1]);
         path.closePath();
@@ -107,6 +110,7 @@ function decodeTopo(topo: Topo): Geo {
       name: g.properties.n,
       uf: g.properties.uf,
       path,
+      rings,
       box: [x0, y0, x1, y1],
       cx: (x0 + x1) / 2,
       cy: (y0 + y1) / 2,
@@ -116,9 +120,18 @@ function decodeTopo(topo: Topo): Geo {
     bx1 = Math.max(bx1, x1);
     by1 = Math.max(by1, y1);
   }
-  // single combined path for all borders — one stroke call instead of 5,570
+  // single combined path for all borders — one stroke call instead of 5,570.
+  // NEVER use Path2D.addPath here: it connects each added path's first point
+  // to the previous subpath's closed endpoint with a straight line, spraying
+  // thousands of bogus triangles across the map (verified in node + browser).
   const borders = new Path2D();
-  for (const m of muns) borders.addPath(m.path);
+  for (const m of muns) {
+    for (const pts of m.rings) {
+      borders.moveTo(pts[0][0], pts[0][1]);
+      for (let k = 1; k < pts.length; k++) borders.lineTo(pts[k][0], pts[k][1]);
+      borders.closePath();
+    }
+  }
 
   // state borders: ring segments whose other side belongs to a different
   // UF. Arcs aren't deduped across muns in this file (verified: 5,679 of
@@ -162,8 +175,9 @@ function decodeTopo(topo: Topo): Geo {
 
 /* ---------- color: party color × margin tone ---------- */
 
-// 4-step tone ramp from panel-dark to party color, by margin quartile
-const TONES = [0.28, 0.46, 0.66, 0.92];
+// 4-step tone ramp toward party color by margin quartile — floor kept HIGH
+// (0.62) so even tight races read vividly; muted fills made the map look dead
+const TONES = [0.62, 0.74, 0.86, 1.0];
 
 function hexToRgb(h: string): [number, number, number] {
   const v = parseInt(h.slice(1), 16);
@@ -342,21 +356,91 @@ export const CanvasMap = memo(function CanvasMap({
       }
       let p = byColor.get(fill);
       if (!p) byColor.set(fill, (p = new Path2D()));
-      p.addPath(m.path);
+      // replay rings — addPath would draw a line from the previous group's
+      // endpoint to this mun's first point (the "triangle" artifact)
+      for (const pts of m.rings) {
+        p.moveTo(pts[0][0], pts[0][1]);
+        for (let k = 1; k < pts.length; k++) p.lineTo(pts[k][0], pts[k][1]);
+        p.closePath();
+      }
     }
     for (const [color, p] of byColor) {
       bctx.fillStyle = color;
       bctx.fill(p);
     }
-    bctx.strokeStyle = 'rgba(15,14,13,.55)';
-    bctx.lineWidth = 2000; // geo meters ≈ 1px at base resolution
+    bctx.strokeStyle = 'rgba(15,14,13,.38)';
+    bctx.lineWidth = 1400;
     bctx.stroke(geo.current.borders);
 
     // state lines read above mun seams: LIGHT line over dark seams —
     // hierarchy by contrast, not just thickness
-    bctx.strokeStyle = 'rgba(233,227,213,.42)';
-    bctx.lineWidth = 4200; // ≈2.2px at base res, ~1px on screen at fit
+    // white state lines — high contrast against saturated fills, like the
+    // reference: state boundaries must be visible at a glance
+    bctx.strokeStyle = 'rgba(245,242,235,.85)';
+    bctx.lineWidth = 3800;
     bctx.stroke(geo.current.stateBorders);
+
+    // state labels: UF abbreviation + leader pct — the "understand everything
+    // at a glance" layer. Area-weighted centroid of mun centers per state.
+    const ufAgg = new Map<string, { x: number; y: number; w: number; leader?: string; pct?: number }>();
+    for (const m of geo.current.muns) {
+      const area = Math.max((m.box[2] - m.box[0]) * (m.box[3] - m.box[1]), 1);
+      let a = ufAgg.get(m.uf);
+      if (!a) ufAgg.set(m.uf, (a = { x: 0, y: 0, w: 0 }));
+      a.x += m.cx * area;
+      a.y += m.cy * area;
+      a.w += area;
+    }
+    if (mode === 'presidente') {
+      // aggregate mun results → state winner (votes)
+      const votes = new Map<string, { a: number; b: number; aName: string; bName: string }>();
+      for (const m of geo.current.muns) {
+        const r = res[m.id];
+        if (!r) continue;
+        let v = votes.get(m.uf);
+        if (!v) votes.set(m.uf, (v = { a: 0, b: 0, aName: r.a, bName: r.b }));
+        // keep the statewide top-2 consistent: accumulate into matching slots by name
+        if (v.aName === r.a) { v.a += r.va; v.b += r.vb; }
+        else if (v.aName === r.b) { v.a += r.vb; v.b += r.va; }
+        else if (v.bName === r.a) { v.b += r.va; }
+        else { v.b += r.vb; }
+      }
+      for (const [uf, v] of votes) {
+        const total = v.a + v.b;
+        const lead = v.a >= v.b ? { name: v.aName, pct: (v.a / total) * 100 } : { name: v.bName, pct: (v.b / total) * 100 };
+        const a = ufAgg.get(uf);
+        if (a) { a.leader = lead.name; a.pct = lead.pct; }
+      }
+    } else {
+      for (const [uf, r] of ufResults) {
+        const a = ufAgg.get(uf);
+        const c0 = r.candidates[0];
+        if (a && c0) { a.leader = c0.ballotName; a.pct = c0.percent; }
+      }
+    }
+
+    const fontPx = 26000; // geo meters ≈ 12px on screen at fit
+    bctx.font = `600 ${fontPx}px system-ui, sans-serif`;
+    bctx.textAlign = 'center';
+    bctx.textBaseline = 'middle';
+    for (const [uf, a] of ufAgg) {
+      if (!a.w) continue;
+      const cx = a.x / a.w;
+      const cy = a.y / a.w;
+      const label = uf;
+      const pct = a.pct != null ? `${a.pct.toFixed(0)}%` : '';
+      bctx.lineWidth = 6000;
+      bctx.strokeStyle = 'rgba(0,0,0,.55)';
+      bctx.fillStyle = '#fff';
+      bctx.strokeText(label, cx, cy - (pct ? fontPx * 0.55 : 0));
+      bctx.fillText(label, cx, cy - (pct ? fontPx * 0.55 : 0));
+      if (pct) {
+        bctx.font = `500 ${fontPx * 0.78}px system-ui, sans-serif`;
+        bctx.strokeText(pct, cx, cy + fontPx * 0.5);
+        bctx.fillText(pct, cx, cy + fontPx * 0.5);
+        bctx.font = `600 ${fontPx}px system-ui, sans-serif`;
+      }
+    }
   };
 
   // fit view to container
