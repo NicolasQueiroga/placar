@@ -4,7 +4,7 @@ import type { RaceData, UFProgress } from './types';
 import { Leaderboard } from './components/Leaderboard';
 import { CanvasMap } from './components/CanvasMap';
 import { UFBoard } from './components/UFBoard';
-import { RunoffGauge, RemainingMeter } from './components/RunoffGauge';
+import { RunoffGauge, RemainingMeter, MarginCard } from './components/RunoffGauge';
 import { UFTable } from './components/UFTable';
 import { TrendChart } from './components/TrendChart';
 import { RunoffScenarios, RunoffHistory } from './components/RunoffScenarios';
@@ -320,7 +320,11 @@ export default function App() {
           >
             {race.scope === 'br' && forecast && (
               <div style={{ minWidth: 200, flex: '0 1 auto' }}>
-                <RunoffGauge forecast={forecast} national={national} />
+                {turno === 2 ? (
+                  <MarginCard national={national} />
+                ) : (
+                  <RunoffGauge forecast={forecast} national={national} />
+                )}
               </div>
             )}
             {race.key === 'governador' && <GovernorSummary ufProgress={ufProgress} ufResults={ufResults} />}

@@ -90,6 +90,45 @@ export const RunoffGauge = memo(function RunoffGauge({
   );
 });
 
+/** 2º-turno strip card: the live vote gap — the number everyone asks tonight. */
+export const MarginCard = memo(function MarginCard({ national }: { national: RaceData }) {
+  const a = national.candidates[0];
+  const b = national.candidates[1];
+  const started = national.sectionsCounted > 0 && !!a && !!b;
+  return (
+    <div>
+      <div className="eyebrow">Diferença</div>
+      {started ? (
+        <>
+          <div
+            style={{
+              fontSize: 30,
+              fontWeight: 800,
+              lineHeight: 1.1,
+              marginTop: 4,
+              color: 'var(--text)',
+            }}
+          >
+            <CountUp value={a.votes - b.votes} format={(v) => Math.round(v).toLocaleString('pt-BR')} />
+          </div>
+          <div className="num" style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 6 }}>
+            votos · {(a.percent - b.percent).toFixed(1).replace('.', ',')} p.p. à frente
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1.1, marginTop: 4, color: 'var(--text-dim)' }}>
+            —
+          </div>
+          <div className="num" style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 6 }}>
+            apuração começa às 17h
+          </div>
+        </>
+      )}
+    </div>
+  );
+});
+
 /** Segmented "what's left to count" meter — the ballot-box squares. */
 export const RemainingMeter = memo(function RemainingMeter({
   national,
