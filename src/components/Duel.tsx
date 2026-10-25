@@ -1,9 +1,24 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import type { Candidate } from '../types';
 import { partyColor } from '../tse';
 import { CountUp } from './CountUp';
 
 const pct = (v: number) => `${v.toFixed(2).replace('.', ',')}%`;
+
+/** Reserve wrapping space without mounting hidden animated counters. */
+export function ReservedCopy({ children, alternatives = [] }: {
+  children: ReactNode;
+  alternatives?: readonly string[];
+}) {
+  return (
+    <span style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', minWidth: 0, overflowWrap: 'anywhere' }}>
+      {alternatives.map((text, i) => (
+        <span key={i} aria-hidden style={{ gridArea: '1 / 1', visibility: 'hidden' }}>{text}</span>
+      ))}
+      <span style={{ gridArea: '1 / 1' }}>{children}</span>
+    </span>
+  );
+}
 
 /**
  * The hero duel — two candidates facing each other across a center margin,
@@ -13,11 +28,17 @@ export const Duel = memo(function Duel({
   a,
   b,
   runoff,
+  reserveCandidates,
 }: {
   a: Candidate;
   b: Candidate;
   runoff: boolean;
+  reserveCandidates?: readonly Candidate[];
 }) {
+  const names = reserveCandidates?.map((c) => c.ballotName);
+  const leftMeta = reserveCandidates?.map((c) => `${c.party} · ${c.votes.toLocaleString('pt-BR')}`);
+  const rightMeta = reserveCandidates?.map((c) => `${c.votes.toLocaleString('pt-BR')} · ${c.party}`);
+  const reserveRunoff = reserveCandidates?.some((c) => c.runoff);
   const aColor = partyColor(a.party, a.coalition);
   const bColor = partyColor(b.party, b.coalition);
 
@@ -43,10 +64,10 @@ export const Duel = memo(function Duel({
             lineHeight: 1.1,
           }}
         >
-          {a.ballotName}
+          <ReservedCopy alternatives={names}>{a.ballotName}</ReservedCopy>
         </div>
         <div className="num" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
-          {a.party} · <CountUp value={a.votes} />
+          <ReservedCopy alternatives={leftMeta}>{a.party} · <CountUp value={a.votes} /></ReservedCopy>
         </div>
         <div
           className="fig"
@@ -70,14 +91,16 @@ export const Duel = memo(function Duel({
       {/* center margin */}
       <div
         style={{
-          fontSize: 'clamp(14px, 2.4vw, 28px)',
+          fontSize: 'clamp(12px, 2.4vw, 28px)',
           color: 'var(--text-faint)',
           fontFamily: 'var(--font-serif)',
           paddingBottom: 'clamp(20px, 4.5vw, 56px)',
           whiteSpace: 'nowrap',
         }}
       >
-        {runoff ? 'segundo turno' : '×'}
+        <ReservedCopy alternatives={reserveRunoff ? ['2º turno'] : undefined}>
+          {runoff ? '2º turno' : '×'}
+        </ReservedCopy>
       </div>
 
       {/* right candidate — mirrored */}
@@ -92,10 +115,10 @@ export const Duel = memo(function Duel({
             lineHeight: 1.1,
           }}
         >
-          {b.ballotName}
+          <ReservedCopy alternatives={names}>{b.ballotName}</ReservedCopy>
         </div>
         <div className="num" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
-          <CountUp value={b.votes} /> · {b.party}
+          <ReservedCopy alternatives={rightMeta}><CountUp value={b.votes} /> · {b.party}</ReservedCopy>
         </div>
         <div
           className="fig"

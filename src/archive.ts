@@ -17,6 +17,8 @@ const INGEST_KEY = '27bedc372abaadbd8b82206caec2396e';
 const sent = new Set<string>(); // `${race}:${generatedAt}`
 
 export function archiveNational(race: 'presidente' | 'presidente2', national: RaceData): void {
+  // Local development and browser fixtures must never write live history.
+  if (window.location.hostname !== 'placar.nqlabs.io') return;
   if (national.sectionsCounted <= 0 || national.candidates.length === 0) return;
   const ts = Date.parse(national.generatedAt);
   if (!Number.isFinite(ts)) return;

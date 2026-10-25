@@ -1,9 +1,14 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import type { RaceData, UFProgress } from '../types';
 import { UF_NAMES } from './CanvasMap';
-import { Duel } from './Duel';
+import { Duel, ReservedCopy } from './Duel';
 
 const pct1 = (v: number) => v.toFixed(1).replace('.', ',');
+const countStatus = (race: RaceData) => race.status === 'final'
+  ? 'resultado final'
+  : race.sectionsTotal > 0
+    ? `${pct1((race.sectionsCounted / race.sectionsTotal) * 100)}% apurado`
+    : 'aguardando apuração';
 
 /**
  * Multi-dispute hero. Governor/senator/deputy races are 27 separate battles
@@ -45,31 +50,29 @@ export const StateDuelCycle = memo(function StateDuelCycle({
   const race = ufResults.get(uf)!;
   const a = race.candidates[0];
   const b = race.candidates[1];
-  const status =
-    race.status === 'final'
-      ? 'resultado final'
-      : race.sectionsTotal > 0
-        ? `${pct1((race.sectionsCounted / race.sectionsTotal) * 100)}% apurado`
-        : 'aguardando apuração';
+  const reserveCandidates = ufs.flatMap((uf) => ufResults.get(uf)!.candidates.slice(0, 2));
+  const stateNames = ufs.map((uf) => UF_NAMES[uf] ?? uf);
+  const progressLabels = ufs.map((uf, i) => `${i + 1}/${ufs.length} · ${countStatus(ufResults.get(uf)!)}`);
 
   return (
     <div key={`${resetKey}:${uf}`} className="sent-in">
       <div
         className="eyebrow"
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto',
           gap: 8,
           marginTop: 16,
         }}
       >
-        <span>{UF_NAMES[uf] ?? uf}</span>
-        <span className="num">
-          {(idx % ufs.length) + 1}/{ufs.length} · {status}
+        <ReservedCopy alternatives={stateNames}>{UF_NAMES[uf] ?? uf}</ReservedCopy>
+        <span className="num" style={{ textAlign: 'right' }}>
+          <ReservedCopy alternatives={progressLabels}>
+            {progressLabels[idx % ufs.length]}
+          </ReservedCopy>
         </span>
       </div>
-      <Duel a={a} b={b} runoff={!!a.runoff} />
+      <Duel a={a} b={b} runoff={!!a.runoff} reserveCandidates={reserveCandidates} />
     </div>
   );
 });

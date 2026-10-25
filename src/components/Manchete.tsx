@@ -199,12 +199,9 @@ export const Manchete = memo(function Manchete({
         {sentences.map((sentence) => (
           <div
             key={sentence.id}
-            className={sentence.id === current.id ? 'sent-in' : undefined}
+            className="headline-item"
+            data-active={sentence.id === current.id}
             aria-hidden={sentence.id !== current.id}
-            style={{
-              gridArea: '1 / 1',
-              visibility: sentence.id === current.id ? 'visible' : 'hidden',
-            }}
           >
             {sentence.node}
           </div>

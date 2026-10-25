@@ -137,7 +137,7 @@ body {
 @keyframes sent-in {
   0% {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(4px);
   }
   100% {
     opacity: 1;
@@ -151,7 +151,27 @@ body {
   }
 }
 .sent-in {
-  animation: sent-in 0.52s var(--ease-out) both;
+  animation: sent-in 180ms var(--ease-out) both;
+}
+
+/* Stable grid layers crossfade without changing the document's height. */
+.headline-item {
+  grid-area: 1 / 1;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out), visibility 180ms linear;
+}
+.headline-item[data-active='true'] {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .headline-item,
+  .headline-item[data-active='true'] {
+    transform: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -179,7 +199,7 @@ body {
   }
 }
 .tick-up {
-  animation: tick-up 1.2s ease-out;
+  animation: tick-up 250ms var(--ease-out);
 }
 
 /* Bars use run-ease — the "results arriving" feel */
