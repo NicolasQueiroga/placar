@@ -382,26 +382,24 @@ export const CanvasMap = memo(function CanvasMap({
   // offscreen base: colored map rendered ONCE per data change in geo coords.
   // Main loop just blits it — 5,570 fills happen once, not every frame.
   const baseRef = useRef<HTMLCanvasElement | null>(null);
+  // cached geometry + label inputs so the DETAIL layer can re-paint the same
+  // scene at any zoom without rebuilding 5,570 paths
+  const pathsRef = useRef<{ byColor: Map<string, Path2D> } | null>(null);
+  const labelDataRef = useRef<{
+    centroids: Map<string, { x: number; y: number }>;
+    leaders: Map<string, { pct: number; color: string }>;
+  } | null>(null);
+  // detail layer: viewport re-rasterized at device resolution once the view
+  // settles — this is what keeps zoomed-in edges + labels tack-sharp
+  const detailRef = useRef<HTMLCanvasElement | null>(null);
+  const detailView = useRef<{ k: number; ox: number; oy: number } | null>(null);
+  const detailDirty = useRef(true);
+  const detailTimer = useRef(0);
   const renderBase = () => {
     if (!geo.current || !results.current) return;
     const [x0, y0, x1, y1] = geo.current.box;
     const gw = x1 - x0;
     const gh = y1 - y0;
-    // target ~2400px on the long side — crisp to ~4x zoom, ~23MB RGBA, safe on mobile
-    const RES = 2400 / Math.max(gw, gh);
-    const w = Math.ceil(gw * RES);
-    const h = Math.ceil(gh * RES);
-    let c = baseRef.current;
-    if (!c) {
-      c = document.createElement('canvas');
-      baseRef.current = c;
-    }
-    c.width = w;
-    c.height = h;
-    const bctx = c.getContext('2d')!;
-    bctx.setTransform(1, 0, 0, 1, 0, 0);
-    bctx.clearRect(0, 0, w, h);
-    bctx.setTransform(RES, 0, 0, RES, -x0 * RES, -y0 * RES);
 
     const res = results.current;
     // runoff (presidente 2º turno) has no mun-level feed — states color live
@@ -420,7 +418,8 @@ export const CanvasMap = memo(function CanvasMap({
       }
     }
 
-    // two passes: fills grouped by color (minimize state changes), then borders once
+    // fills grouped by color (minimize state changes) — paths cached so the
+    // detail layer can re-paint them at any zoom without rebuilding
     const byColor = new Map<string, Path2D>();
     for (const m of geo.current.muns) {
       let fill = '#221f18';
@@ -441,26 +440,9 @@ export const CanvasMap = memo(function CanvasMap({
         p.closePath();
       }
     }
-    for (const [color, p] of byColor) {
-      bctx.fillStyle = color;
-      bctx.fill(p);
-    }
-    bctx.strokeStyle = 'rgba(15,14,13,.38)';
-    bctx.lineWidth = 1400;
-    bctx.stroke(geo.current.borders);
+    pathsRef.current = { byColor };
 
-    // state lines read above mun seams: LIGHT line over dark seams —
-    // hierarchy by contrast, not just thickness
-    // white state lines — high contrast against saturated fills, like the
-    // reference: state boundaries must be visible at a glance
-    bctx.strokeStyle = 'rgba(245,242,235,.85)';
-    bctx.lineWidth = 3800;
-    bctx.stroke(geo.current.stateBorders);
-
-    // ---- state label layer: UF + leader pct, inside the state boundary ----
-    // The "understand everything at a glance" layer. Centroid = area-weighted
-    // average of mun centers. Font sizes are constant ON SCREEN at fit zoom
-    // (labels scale with the map as you zoom, like the reference).
+    // label inputs: area-weighted centroids + per-state leaders
     const ufAgg = new Map<string, { x: number; y: number; w: number }>();
     for (const m of geo.current.muns) {
       const area = Math.max((m.box[2] - m.box[0]) * (m.box[3] - m.box[1]), 1);
@@ -470,67 +452,140 @@ export const CanvasMap = memo(function CanvasMap({
       a.y += m.cy * area;
       a.w += area;
     }
-    const leaders = computeUfLeaders(staticMun ? 'presidente' : 'live', geo.current.muns, res, ufResults);
-
-    // small states get HTML callout chips (rendered in JSX) — in-map labels
-    // there would collide. Same set as the reference.
-    // fit() is height-limited for Brazil's aspect — mirror its math exactly
-    // or labels come out ~half the intended size
-    const wrapW = wrapRef.current?.clientWidth ?? 1150;
-    const wrapH = wrapRef.current?.clientHeight ?? 460;
-    const fitScale = Math.min(wrapW / gw, wrapH / gh) * 0.96; // px per geo-meter at fit
-
-    // Labels are drawn in BASE-PIXEL space (identity transform), not geo
-    // units: Chromium clamps canvas fonts above ~30-60k px, so a geo-unit
-    // font (100k+) silently renders tiny. Base px keeps fonts at ~50px —
-    // no clamp, crisp raster.
-    bctx.setTransform(1, 0, 0, 1, 0, 0);
-    const fontUf = (13 / fitScale) * RES; // base px → 13 screen px at fit
-    const fontPct = (11.5 / fitScale) * RES;
-    const halo = fontUf * 0.22;
-    const bx = (gx: number) => (gx - x0) * RES;
-    const by = (gy: number) => (gy - y0) * RES;
-
-    bctx.textAlign = 'center';
-    bctx.textBaseline = 'middle';
+    const centroids = new Map<string, { x: number; y: number }>();
     for (const [uf, a] of ufAgg) {
-      if (!a.w || CHIP_UFS.has(uf)) continue;
-      const cx = bx(a.x / a.w);
-      const cy = by(a.y / a.w);
-      const lead = leaders.get(uf);
+      if (a.w && !CHIP_UFS.has(uf)) centroids.set(uf, { x: a.x / a.w, y: a.y / a.w });
+    }
+    labelDataRef.current = {
+      centroids,
+      leaders: computeUfLeaders(staticMun ? 'presidente' : 'live', geo.current.muns, res, ufResults),
+    };
+
+    // coarse interaction layer: whole country at ~2400px on the long side.
+    // Used while the view is moving; the detail layer takes over at rest.
+    const RES = 2400 / Math.max(gw, gh);
+    const w = Math.ceil(gw * RES);
+    const h = Math.ceil(gh * RES);
+    let c = baseRef.current;
+    if (!c) {
+      c = document.createElement('canvas');
+      baseRef.current = c;
+    }
+    c.width = w;
+    c.height = h;
+    const bctx = c.getContext('2d')!;
+    bctx.clearRect(0, 0, w, h);
+    paintMap(bctx, RES, -x0 * RES, -y0 * RES);
+    detailDirty.current = true; // colors/labels changed — detail must re-render
+  };
+
+  /**
+   * Paint the full scene (fills, borders, state lines, labels) into a
+   * context at an arbitrary geo→canvas-px transform. Shared by the coarse
+   * base and the per-viewport detail layer.
+   *   k, ox, oy: canvas px per geo-meter + offset (same shape as the view)
+   */
+  const paintMap = (ctx: CanvasRenderingContext2D, k: number, ox: number, oy: number) => {
+    const paths = pathsRef.current;
+    const labels = labelDataRef.current;
+    if (!paths || !geo.current) return;
+
+    ctx.setTransform(k, 0, 0, k, ox, oy);
+    for (const [color, p] of paths.byColor) {
+      ctx.fillStyle = color;
+      ctx.fill(p);
+    }
+    // border widths are in geo units — they scale with the transform, so
+    // edges stay proportionally correct (and sharp) at every zoom
+    ctx.strokeStyle = 'rgba(15,14,13,.38)';
+    ctx.lineWidth = 1400;
+    ctx.stroke(geo.current.borders);
+    // white state lines — high contrast against saturated fills, like the
+    // reference: state boundaries must be visible at a glance
+    ctx.strokeStyle = 'rgba(245,242,235,.85)';
+    ctx.lineWidth = 3800;
+    ctx.stroke(geo.current.stateBorders);
+
+    if (!labels) return;
+    // Labels in CANVAS-PIXEL space (identity transform): Chromium clamps
+    // canvas fonts above ~30-60k px, so geo-unit fonts silently render tiny.
+    // Geo-constant size: 13 css-px at fit, scaling with the map as you zoom.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const fk = fitK.current || k;
+    const fontUf = (13 * k) / fk;
+    const fontPct = (11.5 * k) / fk;
+    const halo = fontUf * 0.22;
+    const px = (gx: number) => gx * k + ox;
+    const py = (gy: number) => gy * k + oy;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const [uf, c] of labels.centroids) {
+      const cx = px(c.x);
+      const cy = py(c.y);
+      const lead = labels.leaders.get(uf);
       const pct = lead ? `${Math.round(lead.pct)}%` : null;
 
       // line 1: UF — bold white with dark halo, readable over any fill
-      bctx.font = `700 ${fontUf}px system-ui, sans-serif`;
-      bctx.lineWidth = halo;
-      bctx.strokeStyle = 'rgba(10,8,6,.6)';
-      bctx.fillStyle = '#fff';
+      ctx.font = `700 ${fontUf}px system-ui, sans-serif`;
+      ctx.lineWidth = halo;
+      ctx.strokeStyle = 'rgba(10,8,6,.6)';
+      ctx.fillStyle = '#fff';
       const yUf = cy - (pct ? fontUf * 0.58 : 0);
-      bctx.strokeText(uf, cx, yUf);
-      bctx.fillText(uf, cx, yUf);
+      ctx.strokeText(uf, cx, yUf);
+      ctx.fillText(uf, cx, yUf);
 
       if (pct && lead) {
         // line 2: party dot + pct — the leader cue. Dot gets a white ring so
         // it reads even on a same-color state fill.
-        bctx.font = `600 ${fontPct}px system-ui, sans-serif`;
+        ctx.font = `600 ${fontPct}px system-ui, sans-serif`;
         const yPct = cy + fontPct * 0.62;
-        const tw = bctx.measureText(pct).width;
+        const tw = ctx.measureText(pct).width;
         const dotR = fontPct * 0.3;
         const dotX = cx - tw / 2 - dotR * 1.7;
-        bctx.beginPath();
-        bctx.arc(dotX, yPct, dotR, 0, Math.PI * 2);
-        bctx.fillStyle = lead.color;
-        bctx.fill();
-        bctx.lineWidth = dotR * 0.55;
-        bctx.strokeStyle = '#fff';
-        bctx.stroke();
-        bctx.lineWidth = halo * 0.8;
-        bctx.strokeStyle = 'rgba(10,8,6,.6)';
-        bctx.fillStyle = '#fff';
-        bctx.strokeText(pct, cx + dotR, yPct);
-        bctx.fillText(pct, cx + dotR, yPct);
+        ctx.beginPath();
+        ctx.arc(dotX, yPct, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = lead.color;
+        ctx.fill();
+        ctx.lineWidth = dotR * 0.55;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+        ctx.lineWidth = halo * 0.8;
+        ctx.strokeStyle = 'rgba(10,8,6,.6)';
+        ctx.fillStyle = '#fff';
+        ctx.strokeText(pct, cx + dotR, yPct);
+        ctx.fillText(pct, cx + dotR, yPct);
       }
     }
+  };
+
+  /**
+   * Re-rasterize the CURRENT viewport at device resolution. Debounced from
+   * draw() once the view stops moving — the difference between an upscaled
+   * bitmap and a natively rendered scene at deep zoom.
+   */
+  const renderDetail = () => {
+    const wrap = wrapRef.current;
+    if (!wrap || !pathsRef.current) return;
+    const v = target.current;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = wrap.clientWidth;
+    const H = wrap.clientHeight;
+    // canvas px cap — a 4K viewport at 2x would be 32MP (128MB)
+    const cap = 4096 / Math.max(W * dpr, H * dpr);
+    if (cap < 1) dpr *= cap;
+    let c = detailRef.current;
+    if (!c) {
+      c = document.createElement('canvas');
+      detailRef.current = c;
+    }
+    c.width = Math.ceil(W * dpr);
+    c.height = Math.ceil(H * dpr);
+    const dctx = c.getContext('2d')!;
+    dctx.clearRect(0, 0, c.width, c.height);
+    paintMap(dctx, v.k * dpr, v.ox * dpr, v.oy * dpr);
+    detailView.current = { ...v };
+    detailDirty.current = false;
   };
 
   // fit view to container
@@ -584,8 +639,25 @@ export const CanvasMap = memo(function CanvasMap({
     ctx.translate(v.ox, v.oy);
     ctx.scale(v.k, v.k);
 
-    // blit the pre-rendered base — one drawImage instead of 5,570 fills
-    if (baseRef.current) {
+    // blit the DETAIL layer (viewport rasterized at device res) whenever it
+    // matches the view — sharp at any zoom. While the view is moving it
+    // can't match, so the coarse base covers motion instead.
+    const d = detailRef.current;
+    const dv = detailView.current;
+    const detailMatches =
+      d &&
+      dv &&
+      d.width === canvas.width &&
+      d.height === canvas.height &&
+      Math.abs(dv.k - v.k) < v.k * 0.002 &&
+      Math.abs(dv.ox - v.ox) < 1 &&
+      Math.abs(dv.oy - v.oy) < 1;
+    if (detailMatches) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // device px 1:1
+      ctx.drawImage(d!, 0, 0);
+      ctx.restore();
+    } else if (baseRef.current) {
       const [x0, y0, x1, y1] = geo.current!.box;
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(baseRef.current, x0, y0, x1 - x0, y1 - y0);
@@ -610,7 +682,16 @@ export const CanvasMap = memo(function CanvasMap({
 
     ctx.restore();
 
-    if (!still) schedule();
+    if (!still) {
+      detailDirty.current = true; // view moved — stale until re-rendered
+      schedule();
+    } else if (detailDirty.current && !detailTimer.current) {
+      detailTimer.current = window.setTimeout(() => {
+        detailTimer.current = 0;
+        renderDetail();
+        schedule(); // one more frame to blit the fresh detail
+      }, 130);
+    }
   };
 
   // single-flight scheduler — never stack rAF chains
