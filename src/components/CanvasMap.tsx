@@ -465,8 +465,11 @@ export const CanvasMap = memo(function CanvasMap({
 
     // small states get HTML callout chips (rendered in JSX) — in-map labels
     // there would collide. Same set as the reference.
+    // fit() is height-limited for Brazil's aspect — mirror its math exactly
+    // or labels come out ~half the intended size
     const wrapW = wrapRef.current?.clientWidth ?? 1150;
-    const fitScale = (wrapW * 0.96) / gw; // px per geo-meter at fit zoom
+    const wrapH = wrapRef.current?.clientHeight ?? 460;
+    const fitScale = Math.min(wrapW / gw, wrapH / gh) * 0.96; // px per geo-meter at fit
     const fontUf = 13 / fitScale; // 13px on screen at fit
     const fontPct = 11.5 / fitScale;
     const halo = fontUf * 0.22;
