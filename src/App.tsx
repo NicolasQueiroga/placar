@@ -112,6 +112,12 @@ export default function App() {
   const leader = national?.candidates[0];
   const runnerUp = national?.candidates[1];
 
+  // touch devices get touch-gesture hints instead of keyboard/mouse ones
+  const coarsePointer = useMemo(
+    () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
+    [],
+  );
+
   const turnoutPct = useMemo(() => {
     if (!national || !national.electorsCounted) return 0;
     return (national.turnout / national.electorsCounted) * 100;
@@ -129,16 +135,16 @@ export default function App() {
       {tv && national && (
         <TVMode national={national} ufProgress={ufProgress} ufResults={ufResults} trendPoints={mergedTrend} />
       )}
-      {/* Sticky glass bar — race switcher + live status, always visible */}
+      {/* Sticky glass bar — race switcher + live status, always visible.
+          On phones the nav drops to its own scrollable row (see .topbar in css) */}
       <div
-        className="glass"
+        className="glass topbar"
         style={{
           position: 'sticky',
           top: 0,
           zIndex: 10,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           gap: 12,
           padding: '10px 0',
           marginBottom: 8,
@@ -149,31 +155,32 @@ export default function App() {
           <span style={{ fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.02em', fontSize: 15 }}>
             Placar
           </span>
-          <nav role="tablist" aria-label="Cargos" style={{ display: 'flex', gap: 2 }}>
-            {RACES.map((r) => (
-              <button
-                key={r.key}
-                role="tab"
-                aria-selected={r.key === race.key}
-                onClick={() => setRace(r.key)}
-                className="tab"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: `2px solid ${r.key === race.key ? 'var(--text)' : 'transparent'}`,
-                  color: r.key === race.key ? 'var(--text)' : 'var(--text-faint)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 12,
-                  padding: '6px 12px 8px',
-                  cursor: 'pointer',
-                }}
-              >
-                {r.label}
-              </button>
-            ))}
-          </nav>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <nav role="tablist" aria-label="Cargos" style={{ display: 'flex', gap: 2, minWidth: 0 }}>
+          {RACES.map((r) => (
+            <button
+              key={r.key}
+              role="tab"
+              aria-selected={r.key === race.key}
+              onClick={() => setRace(r.key)}
+              className="tab"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                borderBottom: `2px solid ${r.key === race.key ? 'var(--text)' : 'transparent'}`,
+                color: r.key === race.key ? 'var(--text)' : 'var(--text-faint)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                padding: '6px 12px 8px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </nav>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 'auto' }}>
           {race.key === 'presidente' && (
             <span style={{ display: 'flex', gap: 2 }}>
               {([1, 2] as const).map((t) => (
@@ -319,7 +326,11 @@ export default function App() {
             >
               <span>cor = partido vencedor {race.key === 'presidente' && turno === 2 ? 'no estado' : 'no município'}</span>
               <span>tom = vantagem (claro = disputado, forte = vitória ampla)</span>
-              <span>ctrl/⌘ + scroll = zoom · clique num município para aproximar · arraste para mover</span>
+              <span>
+                {coarsePointer
+                  ? 'toque num município para aproximar · arraste para mover · pinça = zoom'
+                  : 'ctrl/⌘ + scroll = zoom · clique num município para aproximar · arraste para mover'}
+              </span>
               <span>gerado {national.generatedAt.slice(11, 19)} BRT</span>
             </div>
           </section>

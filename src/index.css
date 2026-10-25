@@ -219,6 +219,26 @@ body {
   }
 }
 
+/* Phone topbar: brand + controls stay on row 1, race tabs drop to their
+   own full-width row and scroll horizontally instead of overflowing the
+   page (was 74px of clipped tabs at 390px) */
+@media (max-width: 720px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .topbar > nav[role='tablist'] {
+    order: 3;
+    flex-basis: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .topbar > nav[role='tablist']::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* per-state result index beside the map — leader-colored pills */
 .map-chips {
   position: absolute;

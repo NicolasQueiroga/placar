@@ -50,7 +50,7 @@ export const Duel = memo(function Duel({
         </div>
         <div
           className="fig"
-          style={{ fontSize: 'clamp(44px, 6.5vw, 84px)', lineHeight: 1, marginTop: 8 }}
+          style={{ fontSize: 'clamp(30px, 8.5vw, 84px)', lineHeight: 1, marginTop: 8 }}
         >
           <CountUp value={a.percent} format={pct} />
         </div>
@@ -70,10 +70,10 @@ export const Duel = memo(function Duel({
       {/* center margin */}
       <div
         style={{
-          fontSize: 'clamp(18px, 2.4vw, 28px)',
+          fontSize: 'clamp(14px, 2.4vw, 28px)',
           color: 'var(--text-faint)',
           fontFamily: 'var(--font-serif)',
-          paddingBottom: 'clamp(28px, 4.5vw, 56px)',
+          paddingBottom: 'clamp(20px, 4.5vw, 56px)',
           whiteSpace: 'nowrap',
         }}
       >
@@ -99,7 +99,7 @@ export const Duel = memo(function Duel({
         </div>
         <div
           className="fig"
-          style={{ fontSize: 'clamp(44px, 6.5vw, 84px)', lineHeight: 1, marginTop: 8 }}
+          style={{ fontSize: 'clamp(30px, 8.5vw, 84px)', lineHeight: 1, marginTop: 8 }}
         >
           <CountUp value={b.percent} format={pct} />
         </div>

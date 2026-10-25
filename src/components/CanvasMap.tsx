@@ -828,9 +828,11 @@ export const CanvasMap = memo(function CanvasMap({
     return () => canvas.removeEventListener('wheel', onWheel);
   }, [loaded]);
 
-  const onClick = (e: React.MouseEvent) => {
-    if (dragRef.current?.moved) return;
-    const m = hitTest(e.clientX, e.clientY);
+  // shared tap logic (mouse click + touch tap). Lives in a ref updated each
+  // render so the native touch listeners never see a stale `selected`.
+  const tapRef = useRef<(clientX: number, clientY: number) => void>(() => {});
+  tapRef.current = (clientX, clientY) => {
+    const m = hitTest(clientX, clientY);
     if (!m || m.id === selected) {
       setSelected(null);
       fit();
@@ -838,8 +840,91 @@ export const CanvasMap = memo(function CanvasMap({
       setSelected(m.id);
       zoomTo(m);
     }
+    // surface the tapped municipality's tooltip — touch has no hover
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (rect) {
+      hoverRef.current = m ? { id: m.id } : null;
+      setHover(m ? { mun: m, x: clientX - rect.left, y: clientY - rect.top } : null);
+    }
     schedule();
   };
+
+  const onClick = (e: React.MouseEvent) => {
+    if (dragRef.current?.moved) return;
+    tapRef.current(e.clientX, e.clientY);
+  };
+
+  // touch gestures (native listeners — React's are passive and cannot
+  // preventDefault): 1-finger drag = pan, 2-finger pinch = zoom anchored
+  // at the midpoint, tap = select. touchAction:none on the canvas keeps
+  // the browser from stealing the gestures for page scroll/zoom.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let pan: { x: number; y: number; moved: boolean } | null = null;
+    let pinchD = 0;
+    let pinched = false;
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pan = null;
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        pinchD = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        pinched = true;
+        e.preventDefault();
+      } else if (e.touches.length === 1) {
+        pan = { x: e.touches[0].clientX, y: e.touches[0].clientY, moved: false };
+      }
+    };
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchD > 0) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const d = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const rect = canvas.getBoundingClientRect();
+        const mx = (t1.clientX + t2.clientX) / 2 - rect.left;
+        const my = (t1.clientY + t2.clientY) / 2 - rect.top;
+        const t = target.current;
+        const kMin = (fitK.current ?? t.k) / 4;
+        const kMax = (fitK.current ?? t.k) * 250;
+        const k2 = Math.min(kMax, Math.max(kMin, (t.k * d) / pinchD));
+        target.current = { k: k2, ox: mx - ((mx - t.ox) / t.k) * k2, oy: my - ((my - t.oy) / t.k) * k2 };
+        pinchD = d;
+        schedule();
+      } else if (pan && e.touches.length === 1) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - pan.x;
+        const dy = e.touches[0].clientY - pan.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) pan.moved = true;
+        const t = target.current;
+        target.current = { ...t, ox: t.ox + dx, oy: t.oy + dy };
+        pan.x = e.touches[0].clientX;
+        pan.y = e.touches[0].clientY;
+        schedule();
+      }
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length > 0) return; // a finger is still down
+      const tap = pan && !pan.moved && !pinched ? e.changedTouches[0] : null;
+      pan = null;
+      pinchD = 0;
+      pinched = false;
+      if (tap) {
+        e.preventDefault(); // suppress the synthetic click (would re-toggle)
+        tapRef.current(tap.clientX, tap.clientY);
+      }
+    };
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd, { passive: false });
+    return () => {
+      canvas.removeEventListener('touchstart', onStart);
+      canvas.removeEventListener('touchmove', onMove);
+      canvas.removeEventListener('touchend', onEnd);
+    };
+  }, [loaded]);
 
   const zoomTo = (m: MunShape) => {
     const wrap = wrapRef.current;
@@ -890,7 +975,7 @@ export const CanvasMap = memo(function CanvasMap({
     <div ref={wrapRef} style={{ position: 'relative', width: '100%', aspectRatio: '1.0648', cursor: hover ? 'pointer' : 'grab' }}>
       <canvas
         ref={canvasRef}
-        style={{ width: '100%', height: '100%', display: 'block' }}
+        style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
         onMouseMove={onMouseMove}
         onMouseDown={(e) => {
           dragRef.current = { x: e.clientX, y: e.clientY, moved: false };
