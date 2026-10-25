@@ -470,16 +470,24 @@ export const CanvasMap = memo(function CanvasMap({
     const wrapW = wrapRef.current?.clientWidth ?? 1150;
     const wrapH = wrapRef.current?.clientHeight ?? 460;
     const fitScale = Math.min(wrapW / gw, wrapH / gh) * 0.96; // px per geo-meter at fit
-    const fontUf = 13 / fitScale; // 13px on screen at fit
-    const fontPct = 11.5 / fitScale;
+
+    // Labels are drawn in BASE-PIXEL space (identity transform), not geo
+    // units: Chromium clamps canvas fonts above ~30-60k px, so a geo-unit
+    // font (100k+) silently renders tiny. Base px keeps fonts at ~50px —
+    // no clamp, crisp raster.
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    const fontUf = (13 / fitScale) * RES; // base px → 13 screen px at fit
+    const fontPct = (11.5 / fitScale) * RES;
     const halo = fontUf * 0.22;
+    const bx = (gx: number) => (gx - x0) * RES;
+    const by = (gy: number) => (gy - y0) * RES;
 
     bctx.textAlign = 'center';
     bctx.textBaseline = 'middle';
     for (const [uf, a] of ufAgg) {
       if (!a.w || CHIP_UFS.has(uf)) continue;
-      const cx = a.x / a.w;
-      const cy = a.y / a.w;
+      const cx = bx(a.x / a.w);
+      const cy = by(a.y / a.w);
       const lead = leaders.get(uf);
       const pct = lead ? `${Math.round(lead.pct)}%` : null;
 
