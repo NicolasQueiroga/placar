@@ -187,6 +187,41 @@ export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'pre
         </span>
       </div>
 
+      {/* everyone else at this minute — the 1º turno was a 12-way race,
+          the duel alone hides the third-way story (2º turno: strip hides).
+          flex-wrap chips: adjacent nowrap spans with no whitespace between
+          them have no line-break opportunity and overflow horizontally */}
+      {cur.candidates.length > 2 && (
+        <div
+          className="num"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            columnGap: 12,
+            rowGap: 2,
+            fontSize: 11,
+            color: 'var(--text-faint)',
+            marginTop: 12,
+          }}
+        >
+          <span>também:</span>
+          {cur.candidates.slice(2).map((c) => (
+            <span key={c.id} style={{ whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  background: partyColor(c.party, c.party),
+                }}
+              />
+              <span style={{ color: 'var(--text-dim)' }}>{c.name}</span> {pct(c.pct)}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* scrubber */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16 }}>
         <button

@@ -29,7 +29,7 @@ export const TrendChart = memo(function TrendChart({
 
   const series = useMemo(() => {
     const top = candidates.slice(0, 4);
-    const all = top.map((c) => ({
+    return top.map((c) => ({
       id: c.id,
       name: c.ballotName,
       color: partyColor(c.party, c.coalition),
@@ -37,15 +37,14 @@ export const TrendChart = memo(function TrendChart({
         .map((p) => ({ t: p.t, v: p.percents[c.id] }))
         .filter((p) => p.v !== undefined),
     }));
-    // candidates peaking under 5% (Cury 2,9%, Renan ~0,8% in 2026) pin the
-    // y-domain to 0→54 and squash the actual race into a flat band at the
-    // top — drop them from the chart (their numbers stay in the tables);
-    // always keep at least the top 2 (start of the count: everyone at 0%)
-    const visible = all.filter((s) => Math.max(0, ...s.pts.map((p) => p.v)) >= 5);
-    return visible.length >= 2 ? visible : all.slice(0, 2);
   }, [points, candidates]);
 
-  const dropped = candidates.length > series.length;
+  // every candidate is drawn by default; the legend toggles series and the
+  // y-domain re-fits to what remains visible — showing Cury+Renan pins the
+  // domain to 0-54, hiding them zooms into the duel (standard chart UX)
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const visible = series.filter((s) => !hidden.has(s.id));
+  const drawn = visible.length > 0 ? visible : series; // can't hide everything
 
   if (points.length < 2) {
     return (
@@ -59,7 +58,7 @@ export const TrendChart = memo(function TrendChart({
   const t1 = points[points.length - 1].t;
   const x = (t: number) => PAD.l + ((t - t0) / Math.max(1, t1 - t0)) * (W - PAD.l - PAD.r);
   // y domain: min/max of the DRAWN series, padded, clamped around 0-100
-  const vals = series.flatMap((s) => s.pts.map((p) => p.v));
+  const vals = drawn.flatMap((s) => s.pts.map((p) => p.v));
   if (vals.length === 0) return null;
   const lo = Math.max(0, Math.floor(Math.min(...vals) - 2));
   const hi = Math.min(100, Math.ceil(Math.max(...vals) + 2));
@@ -70,7 +69,7 @@ export const TrendChart = memo(function TrendChart({
 
   // end-of-line value labels — touch has no hover, so the current number
   // lives at the end of each line; nudged apart when the lines converge
-  const endLabels = series
+  const endLabels = drawn
     .map((s) => ({ s, last: s.pts[s.pts.length - 1] }))
     .filter((l) => l.last)
     .map((l) => ({ ...l, ly: y(l.last.v) }))
@@ -101,7 +100,7 @@ export const TrendChart = memo(function TrendChart({
             </text>
           </g>
         ))}
-        {series.map((s) =>
+        {drawn.map((s) =>
           s.pts.length < 2 ? null : (
             <polyline
               key={s.id}
@@ -136,18 +135,42 @@ export const TrendChart = memo(function TrendChart({
           </text>
         ))}
       </svg>
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 6 }}>
-        {series.map((s) => (
-          <span key={s.id} style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 10, height: 2, background: s.color, display: 'inline-block' }} />
-            {s.name}
-          </span>
-        ))}
-        {dropped && (
-          <span className="num" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
-            · candidatos abaixo de 5% ficam fora do gráfico
-          </span>
-        )}
+      {/* legend toggles series — tap Cury/Renan off to zoom into the duel */}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 6 }} role="group" aria-label="Séries do gráfico">
+        {series.map((s) => {
+          const off = hidden.has(s.id);
+          return (
+            <button
+              key={s.id}
+              aria-pressed={!off}
+              title={off ? 'mostrar no gráfico' : 'ocultar do gráfico'}
+              onClick={() =>
+                setHidden((h) => {
+                  const next = new Set(h);
+                  if (next.has(s.id)) next.delete(s.id);
+                  else next.add(s.id);
+                  return next;
+                })
+              }
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                fontSize: 11,
+                fontFamily: 'inherit',
+                color: 'var(--text-dim)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                opacity: off ? 0.35 : 1,
+              }}
+            >
+              <span style={{ width: 10, height: 2, background: s.color, display: 'inline-block' }} />
+              <span style={{ textDecoration: off ? 'line-through' : 'none' }}>{s.name}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
