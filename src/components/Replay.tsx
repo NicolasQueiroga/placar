@@ -25,7 +25,7 @@ interface ReplayPoint {
 
 const pct = (v: number) => `${v.toFixed(2).replace('.', ',')}%`;
 
-export const Replay = memo(function Replay() {
+export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'presidente2' }) {
   const [points, setPoints] = useState<ReplayPoint[] | null>(null);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -34,7 +34,7 @@ export const Replay = memo(function Replay() {
 
   useEffect(() => {
     let alive = true;
-    fetch(HISTORY_URL, { headers: { Accept: 'application/json' } })
+    fetch(`${HISTORY_URL}&race=${race}`, { headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : { points: [] }))
       .then((d: { points: unknown[] }) => {
         if (!alive) return;
@@ -51,7 +51,7 @@ export const Replay = memo(function Replay() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [race]);
 
   // playback
   useEffect(() => {

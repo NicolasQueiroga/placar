@@ -20,6 +20,7 @@
 
 interface Env {
   DB: D1Database;
+  INGEST_KEY?: string;
 }
 
 const TSE_BASE = 'https://resultados.tse.jus.br/oficial/ele2026';
@@ -184,6 +185,71 @@ async function collectRace(env: Env, raceKeys: string[], withHistory: boolean): 
   return { stored: rows.length };
 }
 
+interface IngestPoint {
+  ts: number;
+  sections_pct: number;
+  candidates: { name: string; id: string; party: string; votes: number; pct: number }[];
+}
+interface IngestBody {
+  race: string;
+  points: IngestPoint[];
+}
+
+function validPoint(p: IngestPoint): boolean {
+  if (!Number.isFinite(p.ts)) return false;
+  const day = 86_400_000;
+  if (p.ts < Date.now() - 7 * day || p.ts > Date.now() + 10 * 60_000) return false;
+  if (!Number.isFinite(p.sections_pct) || p.sections_pct < 0 || p.sections_pct > 100) return false;
+  if (!Array.isArray(p.candidates) || p.candidates.length === 0 || p.candidates.length > 15) return false;
+  for (const c of p.candidates) {
+    if (typeof c.name !== 'string' || c.name.length > 80) return false;
+    if (typeof c.id !== 'string' || c.id.length > 40) return false;
+    if (typeof c.party !== 'string' || c.party.length > 30) return false;
+    if (!Number.isInteger(c.votes) || c.votes < 0 || c.votes > 200_000_000) return false;
+    if (!Number.isFinite(c.pct) || c.pct < 0 || c.pct > 100) return false;
+  }
+  return true;
+}
+
+async function ingest(
+  env: Env,
+  body: IngestBody,
+): Promise<{ stored: number; dropped: number; error?: string }> {
+  if (!body || (body.race !== 'presidente' && body.race !== 'presidente2')) {
+    return { stored: 0, dropped: 0, error: 'race must be presidente|presidente2' };
+  }
+  if (!Array.isArray(body.points) || body.points.length === 0) {
+    return { stored: 0, dropped: 0, error: 'empty' };
+  }
+  const points = body.points.slice(0, 60).filter(validPoint);
+  if (points.length === 0) return { stored: 0, dropped: body.points.length, error: 'no valid points' };
+
+  const row = await env.DB.prepare(`SELECT MAX(sections_pct) AS m FROM history WHERE race = ?`)
+    .bind(body.race)
+    .first<{ m: number | null }>();
+  const maxPct = row?.m ?? 0;
+
+  let stored = 0;
+  let dropped = body.points.length - points.length;
+  const stmts = [];
+  for (const p of points.sort((a, b) => a.ts - b.ts)) {
+    // monotonic guard: never archive behind what we already have
+    // (epsilon: two browsers can legitimately see the same generation)
+    if (p.sections_pct < maxPct - 1e-9) {
+      dropped++;
+      continue;
+    }
+    stmts.push(
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO history (ts, race, uf, sections_pct, candidates) VALUES (?, ?, 'BR', ?, ?)`,
+      ).bind(Math.round(p.ts), body.race, p.sections_pct, JSON.stringify(p.candidates)),
+    );
+    stored++;
+  }
+  if (stmts.length > 0) await env.DB.batch(stmts);
+  return { stored, dropped };
+}
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -218,10 +284,39 @@ export default {
     if (url.pathname === '/history') {
       const minutes = Math.min(Number(url.searchParams.get('minutes') ?? 60), 1440);
       const since = Date.now() - minutes * 60_000;
-      const { results } = await env.DB.prepare(
-        `SELECT ts, race, uf, sections_pct, candidates FROM history WHERE ts > ? ORDER BY ts`,
-      ).bind(since).all();
+      const race = url.searchParams.get('race');
+      const { results } = race
+        ? await env.DB.prepare(
+            `SELECT ts, race, uf, sections_pct, candidates FROM history WHERE ts > ? AND race = ? ORDER BY ts`,
+          )
+            .bind(since, race)
+            .all()
+        : await env.DB.prepare(
+            `SELECT ts, race, uf, sections_pct, candidates FROM history WHERE ts > ? ORDER BY ts`,
+          )
+            .bind(since)
+            .all();
       return jsonWithCors({ points: results }, { headers: { 'cache-control': 'public, s-maxage=60' } });
+    }
+
+    // Browser-driven archive. TSE's WAF blocks this worker's own fetches
+    // (Cloudflare IPs), so the visitors' browsers — which CAN reach TSE —
+    // POST each new national generation here. The key only deters casual
+    // abuse (it ships in the public bundle); the real guards are strict
+    // validation + monotonic sections: anything behind the stored maximum
+    // is dropped, so spam can never rewrite the past.
+    if (url.pathname === '/ingest' && req.method === 'POST') {
+      if (!env.INGEST_KEY || req.headers.get('x-ingest-key') !== env.INGEST_KEY) {
+        return jsonWithCors({ error: 'unauthorized' }, { status: 401 });
+      }
+      let body: IngestBody;
+      try {
+        body = (await req.json()) as IngestBody;
+      } catch {
+        return jsonWithCors({ error: 'bad json' }, { status: 400 });
+      }
+      const out = await ingest(env, body);
+      return jsonWithCors(out, { status: out.error ? 400 : 200 });
     }
 
     if (url.pathname === '/collect' && req.method === 'POST') {

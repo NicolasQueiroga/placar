@@ -18,6 +18,7 @@ import { Replay } from './components/Replay';
 import { RACES } from './tse';
 import { appendTrend, loadTrend } from './trend';
 import { fetchServerTrend, mergeTrends } from './serverTrend';
+import { archiveNational } from './archive';
 import type { TrendPoint } from './trend';
 import { useAlerts } from './alerts';
 
@@ -49,18 +50,24 @@ export default function App() {
   const { alerts, soundOn, toggleSound, dismiss } = useAlerts(national, ufResults, seriesKey);
   const trendRace = useRef(seriesKey);
 
-  // server archive: real minute-by-minute history from D1 (cross-device, survives refresh)
+  // server archive: real minute-by-minute history from D1 (cross-device, survives
+  // refresh). Refetched every 60s so tonight's ingested points appear live.
   useEffect(() => {
     let alive = true;
-    if (seriesKey === 'presidente:1' || seriesKey === 'presidente:2') {
-      fetchServerTrend(seriesKey === 'presidente:2' ? 'presidente2' : 'presidente').then((pts) => {
+    if (seriesKey !== 'presidente:1' && seriesKey !== 'presidente:2') {
+      setServerTrend([]);
+      return;
+    }
+    const race = seriesKey === 'presidente:2' ? 'presidente2' : 'presidente';
+    const load = () =>
+      fetchServerTrend(race).then((pts) => {
         if (alive) setServerTrend(pts);
       });
-    } else {
-      setServerTrend([]);
-    }
+    load();
+    const id = setInterval(load, 60_000);
     return () => {
       alive = false;
+      clearInterval(id);
     };
   }, [seriesKey]);
 
@@ -78,7 +85,10 @@ export default function App() {
       return; // don't record the first load of a new series into the wrong bucket
     }
     setTrend((prev) => appendTrend(prev, national, seriesKey));
-  }, [national, seriesKey]);
+    // browsers can reach TSE even though the worker can't — archive every
+    // new generation so the night is never lost (worker validates + dedupes)
+    if (race.key === 'presidente') archiveNational(turno === 2 ? 'presidente2' : 'presidente', national);
+  }, [national, seriesKey, race.key, turno]);
 
   const leader = national?.candidates[0];
   const runnerUp = national?.candidates[1];
@@ -393,7 +403,7 @@ export default function App() {
               )}
               <RunoffHistory />
               <div style={{ marginTop: 20 }}>
-                <Replay />
+                <Replay race={turno === 2 ? 'presidente2' : 'presidente'} />
               </div>
             </section>
           )}

@@ -27,7 +27,7 @@ interface HistoryRow {
 
 export async function fetchServerTrend(race: 'presidente' | 'presidente2' = 'presidente'): Promise<TrendPoint[]> {
   try {
-    const res = await fetch(HISTORY_URL, { headers: { Accept: 'application/json' } });
+    const res = await fetch(`${HISTORY_URL}&race=${race}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) return [];
     const data = (await res.json()) as { points: HistoryRow[] };
     const out: TrendPoint[] = [];
@@ -44,11 +44,16 @@ export async function fetchServerTrend(race: 'presidente' | 'presidente2' = 'pre
   }
 }
 
-/** Merge server archive with local points; local wins on overlap. */
+/**
+ * Merge server archive with local points by interleaving on timestamp
+ * (local wins exact collisions). The old cutoff at the first local point
+ * hid the ENTIRE server archive whenever a stale local point existed —
+ * e.g. zeroed pre-count points recorded earlier in the day.
+ */
 export function mergeTrends(server: TrendPoint[], local: TrendPoint[]): TrendPoint[] {
   if (server.length === 0) return local;
   if (local.length === 0) return server;
-  const firstLocal = local[0].t;
-  const kept = server.filter((p) => p.t < firstLocal);
-  return [...kept, ...local];
+  const byTs = new Map<number, TrendPoint>(server.map((p) => [p.t, p]));
+  for (const p of local) byTs.set(p.t, p);
+  return [...byTs.values()].sort((a, b) => a.t - b.t);
 }
