@@ -47,7 +47,7 @@ export default function App() {
   const seriesKey = `${race.key}:${turno}`;
   const [trend, setTrend] = useState<TrendPoint[]>(() => loadTrend(seriesKey));
   const [serverTrend, setServerTrend] = useState<TrendPoint[]>([]);
-  const { alerts, soundOn, toggleSound, dismiss } = useAlerts(national, ufResults, seriesKey);
+  const { alerts, soundOn, toggleSound, dismiss } = useAlerts(national, ufResults, seriesKey, race.scope === 'br');
   const trendRace = useRef(seriesKey);
 
   // server archive: real minute-by-minute history from D1 (cross-device, survives
@@ -292,7 +292,7 @@ export default function App() {
 
             {race.key === 'presidente' && (
               <div style={{ marginTop: 16 }}>
-                <Manchete national={national} forecast={forecast} />
+                <Manchete national={national} forecast={forecast} turno={turno} ufProgress={ufProgress} />
               </div>
             )}
 

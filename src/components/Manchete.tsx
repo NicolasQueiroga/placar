@@ -1,26 +1,41 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import type { RaceData, SecondRoundForecast } from '../types';
+import type { RaceData, SecondRoundForecast, UFProgress } from '../types';
 import { partyColor } from '../tse';
 
 const pct2 = (v: number) => v.toFixed(2).replace('.', ',');
 const pct1 = (v: number) => v.toFixed(1).replace('.', ',');
+const mi = (v: number) => `${(v / 1e6).toFixed(1).replace('.', ',')} mi`;
 
 interface Sentence {
   id: string;
   node: React.ReactNode;
 }
 
+/** The same 4-point margin reads differently at 20% and at 95% counted. */
+function marginComment(margin: number, counted: number): string {
+  const late = counted >= 90;
+  if (margin < 3) return late ? 'apertadíssima até o fim.' : 'uma disputa apertadíssima.';
+  if (margin < 6) return late ? 'vantagem que já parece definida.' : 'uma vantagem clara, mas não definitiva.';
+  return late ? 'folga praticamente irreversível.' : 'uma folga considerável.';
+}
+
 /**
  * Rotating hero sentence — data-driven manchetes that state true things
  * about the live count. Each sentence is derived from the numbers, so as
  * the count moves, the story the page tells moves with it.
+ * The sentence set is turno-aware: on the 2º turno the question is no
+ * longer "will there be a runoff" but "how much vote is still out there".
  */
 export const Manchete = memo(function Manchete({
   national,
   forecast,
+  turno,
+  ufProgress,
 }: {
   national: RaceData;
   forecast: SecondRoundForecast | null;
+  turno: 1 | 2;
+  ufProgress: Map<string, UFProgress>;
 }) {
   const sentences = useMemo<Sentence[]>(() => {
     const a = national.candidates[0];
@@ -52,18 +67,13 @@ export const Manchete = memo(function Manchete({
       id: 'margin',
       node: (
         <>
-          A diferença é de {pct2(margin)} pontos percentuais —{' '}
-          {margin < 3
-            ? 'uma disputa apertadíssima.'
-            : margin < 6
-              ? 'uma vantagem clara, mas não definitiva.'
-              : 'uma folga considerável.'}
+          A diferença é de {pct2(margin)} pontos percentuais — {marginComment(margin, counted)}
         </>
       ),
     });
 
-    // 3. the forecast
-    if (forecast) {
+    if (turno === 1 && forecast) {
+      // 1º turno looks forward: will it be decided today?
       out.push({
         id: 'forecast',
         node: (
@@ -76,26 +86,64 @@ export const Manchete = memo(function Manchete({
           </>
         ),
       });
+    } else if (turno === 2) {
+      // 3. how much vote is still out there
+      const secsLeft = national.sectionsTotal - national.sectionsCounted;
+      const perSection =
+        national.sectionsCounted > 0 ? national.validVotes / national.sectionsCounted : 0;
+      const votesLeft = Math.round(secsLeft * perSection);
+      if (secsLeft > 0 && votesLeft > 0) {
+        out.push({
+          id: 'left',
+          node: (
+            <>
+              Restam {secsLeft.toLocaleString('pt-BR')} seções — cerca de {mi(votesLeft)} de
+              votos válidos ainda por apurar.
+            </>
+          ),
+        });
+      }
+      // 4. where that vote is — the state holding the most uncounted electors
+      let biggest: UFProgress | null = null;
+      let biggestLeft = 0;
+      for (const u of ufProgress.values()) {
+        const left = u.electorsTotal - u.electorsCounted;
+        if (left > biggestLeft) {
+          biggest = u;
+          biggestLeft = left;
+        }
+      }
+      if (biggest && biggestLeft > 100_000) {
+        out.push({
+          id: 'where',
+          node: (
+            <>
+              {biggest.uf === 'ZZ' ? 'O exterior' : biggest.uf} é onde mais falta apurar:{' '}
+              {mi(biggestLeft)} de eleitores em seções ainda não totalizadas.
+            </>
+          ),
+        });
+      }
     }
 
-    // 4. turnout
-    const turnout = national.electorsCounted
-      ? (national.turnout / national.electorsCounted) * 100
+    // 5. abstention — factual, moves with the count
+    const abstRate = national.electorsCounted
+      ? (national.abstention / national.electorsCounted) * 100
       : 0;
-    if (turnout > 0) {
+    if (abstRate > 0 && national.abstention > 0) {
       out.push({
-        id: 'turnout',
+        id: 'abstention',
         node: (
           <>
-            {pct1(turnout)}% do eleitorado compareceu —{' '}
-            {turnout < 75 ? 'abstenção alta como poucas vezes na história.' : 'participação intensa.'}
+            {pct1(abstRate)}% de abstenção nas seções apuradas — {mi(national.abstention)} de
+            eleitores não compareceram.
           </>
         ),
       });
     }
 
     return out;
-  }, [national, forecast]);
+  }, [national, forecast, turno, ufProgress]);
 
   const [idx, setIdx] = useState(0);
 
@@ -106,11 +154,12 @@ export const Manchete = memo(function Manchete({
   }, [sentences.length]);
 
   if (sentences.length === 0) return null;
+  const current = sentences[idx % sentences.length];
 
   return (
     <div
       className="sent-in"
-      key={sentences[idx]?.id}
+      key={current.id}
       style={{
         fontFamily: 'var(--font-serif)',
         fontSize: 'clamp(19px, 2.4vw, 26px)',
@@ -123,7 +172,7 @@ export const Manchete = memo(function Manchete({
       }}
       aria-live="polite"
     >
-      {sentences[idx]?.node}
+      {current.node}
     </div>
   );
 });

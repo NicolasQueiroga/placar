@@ -18,6 +18,9 @@ export function useAlerts(
   national: RaceData | null,
   ufResults: Map<string, RaceData>,
   resetKey: string, // race.key (+ turno) — changing it clears memory and banners
+  brScope = true, // uf-scoped races synthesize a fake "national" aggregate —
+  // alerting on its leader would claim someone "assumiu a liderança nacional"
+  // of a 6-state governor sum, which is nonsense
 ) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [soundOn, setSoundOn] = useState(false);
@@ -34,17 +37,23 @@ export function useAlerts(
     setAlerts([]);
   }, [resetKey]);
 
-  // national leadership change
+  // national leadership change (real national races only — see brScope)
   useEffect(() => {
     const leader = national?.candidates[0];
     if (!leader || national!.candidates.length < 2) return;
     const final = national!.status === 'final';
-    if (armed.current && !final && prevLeader.current && prevLeader.current !== leader.id) {
+    if (
+      brScope &&
+      armed.current &&
+      !final &&
+      prevLeader.current &&
+      prevLeader.current !== leader.id
+    ) {
       push(`${leader.ballotName} (${leader.party}) assume a liderança nacional`);
     }
     prevLeader.current = leader.id;
     armed.current = true;
-  }, [national]);
+  }, [national, brScope]);
 
   // UF leadership flips
   useEffect(() => {
@@ -60,6 +69,18 @@ export function useAlerts(
     }
     if (flips.length > 0) flips.forEach(push);
   }, [ufResults]);
+
+  // news decays: a flip from an hour ago is not news anymore — prune after
+  // 3 minutes so the strip reflects the count as it is now
+  useEffect(() => {
+    const id = setInterval(() => {
+      setAlerts((prev) => {
+        const fresh = prev.filter((a) => Date.now() - a.at < 3 * 60_000);
+        return fresh.length === prev.length ? prev : fresh;
+      });
+    }, 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   function push(text: string) {
     const a: Alert = { id: `${Date.now()}:${Math.random().toString(36).slice(2, 6)}`, text, at: Date.now() };
