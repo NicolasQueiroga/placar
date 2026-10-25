@@ -34,6 +34,8 @@ export interface Outlook {
  * Aggregate "what's left" per region + project the final national split.
  * Candidates are matched by BALLOT NUMBER, not array position — a UF file
  * lists that state's own leader first, which flips from state to state.
+ * (Feed rows carry no ballot number, so fall back to party — unique in a
+ * two-candidate race.)
  *
  * Projection: votes already counted + each region's remaining electors
  * split by the region's CURRENT shares. Honest, and it converges to the
@@ -58,8 +60,10 @@ export function buildOutlook(
       const r = ufResults.get(uf);
       const el = p?.electorsTotal ?? r?.electorsTotal ?? 0;
       const pct = Math.min(1, Math.max(0, (p?.percentSections ?? 0) / 100));
-      const ca = r?.candidates.find((c) => c.number === a.number);
-      const cb = r?.candidates.find((c) => c.number === b.number);
+      const match = (c: { number: string; party: string }, ref: { number: string; party: string }) =>
+        c.number === ref.number || c.party === ref.party;
+      const ca = r?.candidates.find((c) => match(c, a));
+      const cb = r?.candidates.find((c) => match(c, b));
       electors += el;
       countedW += el * pct;
       aW += el * (ca?.percent ?? 0);
