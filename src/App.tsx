@@ -465,13 +465,38 @@ export default function App() {
           fontSize: 10.5,
           color: 'var(--text-faint)',
           display: 'flex',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 8,
+          flexDirection: 'column',
+          gap: 6,
         }}
       >
-        <span>fonte: resultados.tse.jus.br · feed próprio com snapshots a cada 2 min</span>
-        <span>modelo de 2º turno: estimativa estatística, não é resultado oficial</span>
+        <span style={{ lineHeight: 1.6 }}>
+          placar é uma apuração independente das eleições 2026 — projeto não-oficial, sem
+          afiliação ao TSE. o resultado oficial é apenas o publicado em{' '}
+          <a
+            href="https://resultados.tse.jus.br"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2 }}
+          >
+            resultados.tse.jus.br
+          </a>
+          . modelo de 2º turno: estimativa estatística, não é resultado oficial.
+        </span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <span>fonte: resultados.tse.jus.br · feed próprio com snapshots a cada 2 min</span>
+          <span>
+            © 2026 nqlabs ·{' '}
+            <a
+              href="https://github.com/NicolasQueiroga/placar"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2 }}
+            >
+              código aberto (MIT)
+            </a>{' '}
+            · dados eleitorais: TSE (públicos)
+          </span>
+        </div>
       </footer>
     </div>
   );
