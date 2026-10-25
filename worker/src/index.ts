@@ -277,7 +277,7 @@ export default {
       ).all();
       return jsonWithCors(
         { ts: Date.now(), races: results },
-        { headers: { 'cache-control': 'public, s-maxage=10, stale-while-revalidate=30' } },
+        { headers: { 'cache-control': 'public, s-maxage=10, stale-while-revalidate=30, stale-if-error=600' } },
       );
     }
 
@@ -296,7 +296,7 @@ export default {
           )
             .bind(since)
             .all();
-      return jsonWithCors({ points: results }, { headers: { 'cache-control': 'public, s-maxage=60' } });
+      return jsonWithCors({ points: results }, { headers: { 'cache-control': 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=600' } });
     }
 
     // Browser-driven archive. TSE's WAF blocks this worker's own fetches
