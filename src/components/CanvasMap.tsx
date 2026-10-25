@@ -173,6 +173,48 @@ function decodeTopo(topo: Topo): Geo {
   return { muns, box: [bx0, by0, bx1, by1], borders, stateBorders };
 }
 
+/**
+ * Leader per state for the label layer: pct (0-100) + party color.
+ * presidente 1st round: aggregate static mun votes (that file is final).
+ * everything live (runoff, governador, ...): candidates[0] from the feed —
+ * but ONLY once sections have started counting; pre-count the map stays neutral.
+ */
+function computeUfLeaders(
+  mode: string,
+  muns: MunShape[] | null,
+  res: Record<string, MunResult> | null,
+  ufResults: Map<string, RaceData>,
+): Map<string, { pct: number; color: string }> {
+  const out = new Map<string, { pct: number; color: string }>();
+  if (mode === 'presidente' && muns && res) {
+    const votes = new Map<string, { a: number; b: number; aName: string; bName: string }>();
+    for (const m of muns) {
+      const r = res[m.id];
+      if (!r) continue;
+      let v = votes.get(m.uf);
+      if (!v) votes.set(m.uf, (v = { a: 0, b: 0, aName: r.a, bName: r.b }));
+      if (v.aName === r.a) { v.a += r.va; v.b += r.vb; }
+      else if (v.aName === r.b) { v.a += r.vb; v.b += r.va; }
+      else if (v.bName === r.a) { v.b += r.va; }
+      else { v.b += r.vb; }
+    }
+    for (const [uf, v] of votes) {
+      const total = v.a + v.b;
+      if (!total) continue;
+      const leadName = v.a >= v.b ? v.aName : v.bName;
+      out.set(uf, { pct: (Math.max(v.a, v.b) / total) * 100, color: partyColorByName(leadName) });
+    }
+    return out;
+  }
+  for (const [uf, r] of ufResults) {
+    if (uf.length !== 2 || uf === 'BR') continue;
+    const c0 = r.candidates[0];
+    if (!c0 || r.sectionsCounted <= 0) continue; // pre-count: stay neutral
+    out.set(uf, { pct: c0.percent, color: partyColor(c0.party, c0.coalition) });
+  }
+  return out;
+}
+
 /* ---------- color: party color × margin tone ---------- */
 
 // 4-step tone ramp toward party color by margin quartile — floor kept HIGH
@@ -246,15 +288,21 @@ interface View {
   k: number;
 }
 
+/** states too small for in-map labels — they get callout chips (like the reference) */
+const CHIP_UFS = new Set(['RN', 'PB', 'PE', 'AL', 'SE', 'ES', 'RJ']);
+
 export const CanvasMap = memo(function CanvasMap({
   ufProgress,
   ufResults,
   mode = 'presidente',
+  turno = 1,
 }: {
   ufProgress: Map<string, UFProgress>;
   ufResults: Map<string, RaceData>;
-  /** 'presidente' = mun-level static data; otherwise UF-level live colors */
+  /** 'presidente' = mun-level static data (1st round); otherwise UF-level live colors */
   mode?: string;
+  /** presidential runoff (2nd round) has no mun-level file — states color live */
+  turno?: 1 | 2;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -305,6 +353,23 @@ export const CanvasMap = memo(function CanvasMap({
     return { map, CELL };
   }, [loaded]);
 
+  // leader per state — drives the callout chips; canvas reads it via ref so
+  // both layers always show the same numbers
+  const leaders = useMemo(
+    () => (loaded ? computeUfLeaders(mode === 'presidente' && turno !== 2 ? 'presidente' : 'live', geo.current?.muns ?? null, results.current, ufResults) : new Map<string, { pct: number; color: string }>()),
+    [loaded, mode, turno, ufResults],
+  );
+  const chips = useMemo(() => {
+    const order = ['RN', 'PB', 'PE', 'AL', 'SE', 'ES', 'RJ'];
+    const out: { uf: string; pct: number | null; color: string | null }[] = order.map((uf) => {
+      const l = leaders.get(uf);
+      return { uf, pct: l?.pct ?? null, color: l?.color ?? null };
+    });
+    const zz = leaders.get('ZZ'); // exterior vote (presidente only)
+    if (zz) out.push({ uf: 'EXT', pct: zz.pct, color: zz.color });
+    return out;
+  }, [leaders]);
+
   // offscreen base: colored map rendered ONCE per data change in geo coords.
   // Main loop just blits it — 5,570 fills happen once, not every frame.
   const baseRef = useRef<HTMLCanvasElement | null>(null);
@@ -330,12 +395,15 @@ export const CanvasMap = memo(function CanvasMap({
     bctx.setTransform(RES, 0, 0, RES, -x0 * RES, -y0 * RES);
 
     const res = results.current;
+    // runoff (presidente 2º turno) has no mun-level feed — states color live
+    const runoff = mode === 'presidente' && turno === 2;
+    const staticMun = mode === 'presidente' && !runoff;
     const ufLeader = new Map<string, { color: string; margin: number }>();
-    if (mode !== 'presidente') {
+    if (!staticMun) {
       for (const [uf, r] of ufResults) {
         const a = r.candidates[0];
         const b = r.candidates[1];
-        if (!a) continue;
+        if (!a || r.sectionsCounted <= 0) continue; // pre-count: neutral
         ufLeader.set(uf, {
           color: partyColor(a.party, a.coalition),
           margin: b ? Math.abs(a.percent - b.percent) : 30,
@@ -347,7 +415,7 @@ export const CanvasMap = memo(function CanvasMap({
     const byColor = new Map<string, Path2D>();
     for (const m of geo.current.muns) {
       let fill = '#221f18';
-      if (mode === 'presidente') {
+      if (staticMun) {
         const r = res[m.id];
         if (r) fill = marginTone(partyColorByName(r.a), Math.abs(r.pa - r.pb));
       } else {
@@ -380,9 +448,11 @@ export const CanvasMap = memo(function CanvasMap({
     bctx.lineWidth = 3800;
     bctx.stroke(geo.current.stateBorders);
 
-    // state labels: UF abbreviation + leader pct — the "understand everything
-    // at a glance" layer. Area-weighted centroid of mun centers per state.
-    const ufAgg = new Map<string, { x: number; y: number; w: number; leader?: string; pct?: number }>();
+    // ---- state label layer: UF + leader pct, inside the state boundary ----
+    // The "understand everything at a glance" layer. Centroid = area-weighted
+    // average of mun centers. Font sizes are constant ON SCREEN at fit zoom
+    // (labels scale with the map as you zoom, like the reference).
+    const ufAgg = new Map<string, { x: number; y: number; w: number }>();
     for (const m of geo.current.muns) {
       const area = Math.max((m.box[2] - m.box[0]) * (m.box[3] - m.box[1]), 1);
       let a = ufAgg.get(m.uf);
@@ -391,54 +461,54 @@ export const CanvasMap = memo(function CanvasMap({
       a.y += m.cy * area;
       a.w += area;
     }
-    if (mode === 'presidente') {
-      // aggregate mun results → state winner (votes)
-      const votes = new Map<string, { a: number; b: number; aName: string; bName: string }>();
-      for (const m of geo.current.muns) {
-        const r = res[m.id];
-        if (!r) continue;
-        let v = votes.get(m.uf);
-        if (!v) votes.set(m.uf, (v = { a: 0, b: 0, aName: r.a, bName: r.b }));
-        // keep the statewide top-2 consistent: accumulate into matching slots by name
-        if (v.aName === r.a) { v.a += r.va; v.b += r.vb; }
-        else if (v.aName === r.b) { v.a += r.vb; v.b += r.va; }
-        else if (v.bName === r.a) { v.b += r.va; }
-        else { v.b += r.vb; }
-      }
-      for (const [uf, v] of votes) {
-        const total = v.a + v.b;
-        const lead = v.a >= v.b ? { name: v.aName, pct: (v.a / total) * 100 } : { name: v.bName, pct: (v.b / total) * 100 };
-        const a = ufAgg.get(uf);
-        if (a) { a.leader = lead.name; a.pct = lead.pct; }
-      }
-    } else {
-      for (const [uf, r] of ufResults) {
-        const a = ufAgg.get(uf);
-        const c0 = r.candidates[0];
-        if (a && c0) { a.leader = c0.ballotName; a.pct = c0.percent; }
-      }
-    }
+    const leaders = computeUfLeaders(staticMun ? 'presidente' : 'live', geo.current.muns, res, ufResults);
 
-    const fontPx = 26000; // geo meters ≈ 12px on screen at fit
-    bctx.font = `600 ${fontPx}px system-ui, sans-serif`;
+    // small states get HTML callout chips (rendered in JSX) — in-map labels
+    // there would collide. Same set as the reference.
+    const wrapW = wrapRef.current?.clientWidth ?? 1150;
+    const fitScale = (wrapW * 0.96) / gw; // px per geo-meter at fit zoom
+    const fontUf = 13 / fitScale; // 13px on screen at fit
+    const fontPct = 11.5 / fitScale;
+    const halo = fontUf * 0.22;
+
     bctx.textAlign = 'center';
     bctx.textBaseline = 'middle';
     for (const [uf, a] of ufAgg) {
-      if (!a.w) continue;
+      if (!a.w || CHIP_UFS.has(uf)) continue;
       const cx = a.x / a.w;
       const cy = a.y / a.w;
-      const label = uf;
-      const pct = a.pct != null ? `${a.pct.toFixed(0)}%` : '';
-      bctx.lineWidth = 6000;
-      bctx.strokeStyle = 'rgba(0,0,0,.55)';
+      const lead = leaders.get(uf);
+      const pct = lead ? `${Math.round(lead.pct)}%` : null;
+
+      // line 1: UF — bold white with dark halo, readable over any fill
+      bctx.font = `700 ${fontUf}px system-ui, sans-serif`;
+      bctx.lineWidth = halo;
+      bctx.strokeStyle = 'rgba(10,8,6,.6)';
       bctx.fillStyle = '#fff';
-      bctx.strokeText(label, cx, cy - (pct ? fontPx * 0.55 : 0));
-      bctx.fillText(label, cx, cy - (pct ? fontPx * 0.55 : 0));
-      if (pct) {
-        bctx.font = `500 ${fontPx * 0.78}px system-ui, sans-serif`;
-        bctx.strokeText(pct, cx, cy + fontPx * 0.5);
-        bctx.fillText(pct, cx, cy + fontPx * 0.5);
-        bctx.font = `600 ${fontPx}px system-ui, sans-serif`;
+      const yUf = cy - (pct ? fontUf * 0.58 : 0);
+      bctx.strokeText(uf, cx, yUf);
+      bctx.fillText(uf, cx, yUf);
+
+      if (pct && lead) {
+        // line 2: party dot + pct — the leader cue. Dot gets a white ring so
+        // it reads even on a same-color state fill.
+        bctx.font = `600 ${fontPct}px system-ui, sans-serif`;
+        const yPct = cy + fontPct * 0.62;
+        const tw = bctx.measureText(pct).width;
+        const dotR = fontPct * 0.3;
+        const dotX = cx - tw / 2 - dotR * 1.7;
+        bctx.beginPath();
+        bctx.arc(dotX, yPct, dotR, 0, Math.PI * 2);
+        bctx.fillStyle = lead.color;
+        bctx.fill();
+        bctx.lineWidth = dotR * 0.55;
+        bctx.strokeStyle = '#fff';
+        bctx.stroke();
+        bctx.lineWidth = halo * 0.8;
+        bctx.strokeStyle = 'rgba(10,8,6,.6)';
+        bctx.fillStyle = '#fff';
+        bctx.strokeText(pct, cx + dotR, yPct);
+        bctx.fillText(pct, cx + dotR, yPct);
       }
     }
   };
@@ -537,7 +607,7 @@ export const CanvasMap = memo(function CanvasMap({
     view.current = { ...target.current };
     schedule();
     return () => cancelAnimationFrame(rafRef.current);
-  }, [loaded, selected, ufProgress, ufResults, mode]);
+  }, [loaded, selected, ufProgress, ufResults, mode, turno]);
 
   useEffect(() => {
     const onResize = () => {
@@ -676,7 +746,7 @@ export const CanvasMap = memo(function CanvasMap({
       ? `${ua.ballotName} ${ua.percent.toFixed(1).replace('.', ',')}%${ub ? ` · ${ub.ballotName} ${ub.percent.toFixed(1).replace('.', ',')}%` : ''}`
       : null;
 
-    if (mode === 'presidente') {
+    if (mode === 'presidente' && turno !== 2) {
       const r = results.current?.[hover.mun.id];
       return {
         name: hover.mun.name,
@@ -696,7 +766,7 @@ export const CanvasMap = memo(function CanvasMap({
       munLine: null,
       ufLine,
     };
-  }, [hover, mode, ufResults]);
+  }, [hover, mode, turno, ufResults]);
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', width: '100%', height: '100%', minHeight: 460, cursor: hover ? 'pointer' : 'grab' }}>
@@ -716,6 +786,45 @@ export const CanvasMap = memo(function CanvasMap({
         }}
         onClick={onClick}
       />
+      {/* callout chips for states too small for in-map labels —
+          leader-colored pill, UF + pct, same info as the map labels */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          right: 10,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 5,
+          zIndex: 15,
+          pointerEvents: 'none',
+        }}
+      >
+        {chips.map((c) => (
+          <div
+            key={c.uf}
+            className="num"
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 8,
+              minWidth: 62,
+              padding: '3px 8px',
+              borderRadius: 4,
+              fontSize: 11,
+              fontWeight: 700,
+              color: '#fff',
+              background: c.color ?? '#1c1913',
+              border: c.color ? 'none' : '1px solid var(--line)',
+            }}
+          >
+            <span>{c.uf}</span>
+            <span>{c.pct != null ? `${Math.round(c.pct)}%` : '—'}</span>
+          </div>
+        ))}
+      </div>
       {tip && hover && (
         <div
           ref={tipRef}

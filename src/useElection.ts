@@ -23,7 +23,8 @@ export interface LiveState {
 
 export function useElection(): LiveState {
   const [raceKey, setRaceKey] = useState<RaceKey>('presidente');
-  const [turno, setTurno] = useState<1 | 2>(1);
+  // runoff day default: land on the 2nd round (flip back to 1 after Oct 2026)
+  const [turno, setTurno] = useState<1 | 2>(2);
   const race = RACES.find((r) => r.key === raceKey) ?? RACES[0];
   // presidential runoff runs under its own election code
   const election = race.key === 'presidente' && turno === 2 ? ELECTIONS.presidente2 : race.election;

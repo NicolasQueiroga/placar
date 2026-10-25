@@ -25,14 +25,14 @@ interface HistoryRow {
   candidates: string;
 }
 
-export async function fetchServerTrend(): Promise<TrendPoint[]> {
+export async function fetchServerTrend(race: 'presidente' | 'presidente2' = 'presidente'): Promise<TrendPoint[]> {
   try {
     const res = await fetch(HISTORY_URL, { headers: { Accept: 'application/json' } });
     if (!res.ok) return [];
     const data = (await res.json()) as { points: HistoryRow[] };
     const out: TrendPoint[] = [];
     for (const p of data.points) {
-      if (p.race !== 'presidente' || p.uf !== 'BR') continue;
+      if (p.race !== race || p.uf !== 'BR') continue;
       const cands: HistoryCandidate[] = JSON.parse(p.candidates);
       const percents: Record<string, number> = {};
       for (const c of cands.slice(0, 4)) percents[c.id] = c.pct;

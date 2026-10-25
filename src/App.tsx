@@ -51,8 +51,8 @@ export default function App() {
   // server archive: real minute-by-minute history from D1 (cross-device, survives refresh)
   useEffect(() => {
     let alive = true;
-    if (seriesKey === 'presidente:1') {
-      fetchServerTrend().then((pts) => {
+    if (seriesKey === 'presidente:1' || seriesKey === 'presidente:2') {
+      fetchServerTrend(seriesKey === 'presidente:2' ? 'presidente2' : 'presidente').then((pts) => {
         if (alive) setServerTrend(pts);
       });
     } else {
@@ -274,7 +274,7 @@ export default function App() {
                 background: 'var(--bg-raised)',
               }}
             >
-              <CanvasMap ufProgress={ufProgress} ufResults={ufResults} mode={race.key} />
+              <CanvasMap ufProgress={ufProgress} ufResults={ufResults} mode={race.key} turno={turno} />
             </div>
             <div
               className="num"
@@ -287,7 +287,7 @@ export default function App() {
                 flexWrap: 'wrap',
               }}
             >
-              <span>cor = partido vencedor no município</span>
+              <span>cor = partido vencedor {race.key === 'presidente' && turno === 2 ? 'no estado' : 'no município'}</span>
               <span>tom = vantagem (claro = disputado, forte = vitória ampla)</span>
               <span>clique num município para aproximar · arraste para mover</span>
               <span>gerado {national.generatedAt.slice(11, 19)} BRT</span>

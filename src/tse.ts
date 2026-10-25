@@ -59,7 +59,9 @@ const etags = new Map<string, string>();
 
 async function fetchJson<T>(url: string): Promise<T | null> {
   const etag = etags.get(url);
-  const res = await fetch(`${url}?nocache=${Date.now()}`, {
+  // no cache-buster: TSE's CDN serves max-age=14 + ETag 304s — the buster made
+  // every poll a full download of 28 files and defeated both caches
+  const res = await fetch(url, {
     headers: etag ? { 'If-None-Match': etag } : undefined,
   });
   if (res.status === 304) return null; // unchanged — caller keeps previous data

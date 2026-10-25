@@ -63,7 +63,13 @@ interface SnapshotRow {
 async function fetchTse(url: string): Promise<TseUnified | null> {
   try {
     const res = await fetch(url, {
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        // TSE's WAF 403s datacenter-looking requests — spoof a browser
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+        Referer: 'https://resultados.tse.jus.br/oficial/',
+      },
       cache: 'no-store',
     });
     if (!res.ok) {
@@ -85,7 +91,6 @@ function normalize(raw: TseUnified, race: string, uf: string): SnapshotRow | nul
     for (const par of agr.par ?? []) {
       for (const c of par.cand ?? []) {
         const votes = Number(c.vap ?? 0);
-        if (votes === 0) continue;
         candidates.push({
           name: c.nmu,
           id: c.sqcand ?? c.nmu,
@@ -106,7 +111,11 @@ function normalize(raw: TseUnified, race: string, uf: string): SnapshotRow | nul
     valid: Number(raw.v?.vvc ?? 0),
     turnout: raw.v?.est ? parseFloat(raw.v.est) || 0 : 0,
     candidates: JSON.stringify(candidates.slice(0, 12)),
-    status: raw.c?.at === 'S' ? 'final' : 'partial',
+    // uf-level cargo block has no `at` flag — final means fully counted
+    status:
+      Number(raw.s?.ts ?? 0) > 0 && Number(raw.s?.st ?? 0) >= Number(raw.s?.ts ?? 0)
+        ? 'final'
+        : 'partial',
     fetched_at: Date.now(),
   };
 }
@@ -157,15 +166,17 @@ async function collectRace(env: Env, raceKeys: string[], withHistory: boolean): 
     ).bind(r.race, r.uf, r.sections_counted, r.sections_total, r.electors, r.valid, r.turnout, r.candidates, r.status, now),
   );
 
-  // history: append-only, only the national presidential race (1 row/run)
+  // history: append-only, national presidential races (1st round + runoff)
   if (withHistory) {
-    const br = rows.find((r) => r.race === 'presidente' && r.uf === 'BR');
-    if (br) {
-      stmts.push(
-        env.DB.prepare(
-          `INSERT INTO history (ts, race, uf, sections_pct, candidates) VALUES (?, ?, ?, ?, ?)`,
-        ).bind(now, 'presidente', 'BR', br.sections_total ? (br.sections_counted / br.sections_total) * 100 : 0, br.candidates),
-      );
+    for (const raceKey of ['presidente', 'presidente2']) {
+      const br = rows.find((r) => r.race === raceKey && r.uf === 'BR');
+      if (br) {
+        stmts.push(
+          env.DB.prepare(
+            `INSERT INTO history (ts, race, uf, sections_pct, candidates) VALUES (?, ?, ?, ?, ?)`,
+          ).bind(now, raceKey, 'BR', br.sections_total ? (br.sections_counted / br.sections_total) * 100 : 0, br.candidates),
+        );
+      }
     }
   }
 
@@ -237,6 +248,6 @@ export default {
     // cron expression tells us which pass this is
     const estadual = event.cron === '*/10 * * * *';
     if (estadual) await collectRace(env, ['governador', 'senador'], false);
-    else await collectRace(env, ['presidente'], true);
+    else await collectRace(env, ['presidente', 'presidente2'], true);
   },
 };
