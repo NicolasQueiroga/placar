@@ -13,6 +13,7 @@ import { Manchete } from './components/Manchete';
 import { StateResults } from './components/StateResults';
 import { CountUp } from './components/CountUp';
 import { Duel } from './components/Duel';
+import { StateDuelCycle } from './components/StateDuelCycle';
 import { TVMode } from './components/TVMode';
 import { Replay } from './components/Replay';
 import { RACES } from './tse';
@@ -296,8 +297,12 @@ export default function App() {
               </div>
             )}
 
-            {leader && runnerUp && (
-              <Duel a={leader} b={runnerUp} runoff={!!runoffConfirmed} />
+            {race.scope === 'br' ? (
+              leader && runnerUp && <Duel a={leader} b={runnerUp} runoff={!!runoffConfirmed} />
+            ) : (
+              /* multi-dispute race: cycle the header through each state's duel
+                 instead of freezing on the aggregate (SP's pair by weight) */
+              <StateDuelCycle ufResults={ufResults} ufProgress={ufProgress} resetKey={seriesKey} />
             )}
           </section>
 
