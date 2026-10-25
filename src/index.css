@@ -218,3 +218,35 @@ body {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* per-state result index beside the map — leader-colored pills */
+.map-chips {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 15;
+  pointer-events: none;
+}
+.map-chips .chip {
+  display: flex;
+  justify-content: space-between;
+  gap: 7px;
+  min-width: 56px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+/* small screens: the 27-chip column can't fit beside the map —
+   in-map labels + zoom carry the info there */
+@media (max-width: 720px) {
+  .map-chips {
+    display: none;
+  }
+}

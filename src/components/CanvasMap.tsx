@@ -288,8 +288,17 @@ interface View {
   k: number;
 }
 
-/** states too small for in-map labels — they get callout chips (like the reference) */
+/** states too small for in-map labels — they'd collide; the chips cover them */
 const CHIP_UFS = new Set(['RN', 'PB', 'PE', 'AL', 'SE', 'ES', 'RJ']);
+
+/** every state, region-ordered N→S — the complete index beside the map */
+const UF_INDEX_ORDER = [
+  'AC', 'AM', 'AP', 'PA', 'RO', 'RR', 'TO',
+  'AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE',
+  'DF', 'GO', 'MS', 'MT',
+  'ES', 'MG', 'RJ', 'SP',
+  'PR', 'RS', 'SC',
+];
 
 export const CanvasMap = memo(function CanvasMap({
   ufProgress,
@@ -360,8 +369,8 @@ export const CanvasMap = memo(function CanvasMap({
     [loaded, mode, turno, ufResults],
   );
   const chips = useMemo(() => {
-    const order = ['RN', 'PB', 'PE', 'AL', 'SE', 'ES', 'RJ'];
-    const out: { uf: string; pct: number | null; color: string | null }[] = order.map((uf) => {
+    // full per-state index down the right edge, region-ordered (N→S)
+    const out: { uf: string; pct: number | null; color: string | null }[] = UF_INDEX_ORDER.map((uf) => {
       const l = leaders.get(uf);
       return { uf, pct: l?.pct ?? null, color: l?.color ?? null };
     });
@@ -788,7 +797,7 @@ export const CanvasMap = memo(function CanvasMap({
   }, [hover, mode, turno, ufResults]);
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', width: '100%', height: '100%', minHeight: 460, cursor: hover ? 'pointer' : 'grab' }}>
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%', aspectRatio: '1.0648', cursor: hover ? 'pointer' : 'grab' }}>
       <canvas
         ref={canvasRef}
         style={{ width: '100%', height: '100%', display: 'block' }}
@@ -805,36 +814,14 @@ export const CanvasMap = memo(function CanvasMap({
         }}
         onClick={onClick}
       />
-      {/* callout chips for states too small for in-map labels —
-          leader-colored pill, UF + pct, same info as the map labels */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          right: 10,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 5,
-          zIndex: 15,
-          pointerEvents: 'none',
-        }}
-      >
+      {/* complete per-state index: leader-colored pill, UF + pct —
+          same numbers the map labels show, in scannable list form */}
+      <div aria-hidden className="map-chips">
         {chips.map((c) => (
           <div
             key={c.uf}
-            className="num"
+            className="chip num"
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 8,
-              minWidth: 62,
-              padding: '3px 8px',
-              borderRadius: 4,
-              fontSize: 11,
-              fontWeight: 700,
-              color: '#fff',
               background: c.color ?? '#1c1913',
               border: c.color ? 'none' : '1px solid var(--line)',
             }}
