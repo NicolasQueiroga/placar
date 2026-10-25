@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { partyColor } from '../tse';
 
 /**
@@ -36,9 +36,9 @@ const pct = (v: number) => `${v.toFixed(2).replace('.', ',')}%`;
 
 export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'presidente2' }) {
   const [points, setPoints] = useState<ReplayPoint[] | null>(null);
-  const [idx, setIdx] = useState(0);
+  const [tsPos, setTsPos] = useState(0); // slider position, epoch minutes
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(12); // archive points per second
+  const [speed, setSpeed] = useState(12); // archive minutes per second
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'pre
           }
         }
         setPoints(pts);
-        if (pts.length > 0) setIdx(pts.length - 1);
+        if (pts.length > 0) setTsPos(Math.floor(pts[pts.length - 1].ts / 60_000));
       })
       .catch(() => alive && setPoints([]));
     return () => {
@@ -79,26 +79,52 @@ export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'pre
     };
   }, [race]);
 
-  // playback
+  // playback — advances WALL-CLOCK minutes (speed = archive min/s), so
+  // data gaps hold the last frame for their true duration instead of
+  // one tick each; the slider below is time-proportional too.
   useEffect(() => {
     if (timer.current) {
       clearInterval(timer.current);
       timer.current = null;
     }
-    if (!playing || !points) return;
+    if (!playing || !points || points.length === 0) return;
+    const end = Math.floor(points[points.length - 1].ts / 60_000);
     timer.current = window.setInterval(() => {
-      setIdx((i) => {
-        if (i >= points.length - 1) {
+      setTsPos((m) => {
+        if (m >= end) {
           setPlaying(false);
-          return i;
+          return m;
         }
-        return i + 1;
+        return m + 1;
       });
     }, 1000 / speed);
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
   }, [playing, speed, points]);
+
+  // slider is TIME-proportional (epoch minutes); the displayed frame is
+  // the latest archived point at or before that moment, so gaps hold
+  // their frame for their true duration instead of one tick each
+  const { idx, startMin, endMin } = useMemo(() => {
+    if (!points || points.length === 0) return { idx: 0, startMin: 0, endMin: 0 };
+    const start = Math.floor(points[0].ts / 60_000);
+    const end = Math.floor(points[points.length - 1].ts / 60_000);
+    const target = tsPos * 60_000;
+    let lo = 0;
+    let hi = points.length - 1;
+    let ans = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (points[mid].ts <= target) {
+        ans = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return { idx: ans, startMin: start, endMin: end };
+  }, [points, tsPos]);
 
   if (points === null) {
     return (
@@ -163,12 +189,12 @@ export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'pre
         </button>
         <input
           type="range"
-          min={0}
-          max={points.length - 1}
-          value={idx}
+          min={startMin}
+          max={endMin}
+          value={tsPos}
           onChange={(e) => {
             setPlaying(false);
-            setIdx(Number(e.target.value));
+            setTsPos(Number(e.target.value));
           }}
           aria-label="Posição do replay"
           style={{ flex: 1, accentColor: 'var(--green-urna)', cursor: 'pointer' }}
