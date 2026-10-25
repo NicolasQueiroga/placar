@@ -289,7 +289,7 @@ export default function App() {
             >
               <span>cor = partido vencedor {race.key === 'presidente' && turno === 2 ? 'no estado' : 'no município'}</span>
               <span>tom = vantagem (claro = disputado, forte = vitória ampla)</span>
-              <span>clique num município para aproximar · arraste para mover</span>
+              <span>ctrl/⌘ + scroll = zoom · clique num município para aproximar · arraste para mover</span>
               <span>gerado {national.generatedAt.slice(11, 19)} BRT</span>
             </div>
           </section>

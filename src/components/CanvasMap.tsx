@@ -9,7 +9,7 @@ import { partyColor } from '../tse';
  *   fill      = winning party color, tone = margin of victory
  *   hover     = tooltip: mun name, both candidates, votes
  *   click     = zoom to municipality; click ocean/again = zoom out
- *   wheel     = zoom; drag = pan
+ *   ⌃/⌘+wheel = zoom (plain wheel scrolls the page); drag = pan
  * Data: public/mun-results.json (static 1st round) merged with live
  * UF-level results for the current race.
  */
@@ -801,12 +801,21 @@ export const CanvasMap = memo(function CanvasMap({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onWheel = (e: WheelEvent) => {
+      // cooperative gestures (Google Maps style): plain scroll belongs to
+      // the PAGE — the map fills the whole column, so trapping the wheel
+      // makes it impossible to scroll past. ⌃/⌘+scroll zooms the map.
+      // On trackpads a PINCH arrives as ctrlKey+wheel, so pinch = zoom and
+      // two-finger scroll = page, with no gesture to learn.
+      if (!e.ctrlKey && !e.metaKey) return; // no preventDefault → page scrolls
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const t = target.current;
-      const factor = e.deltaY < 0 ? 1.18 : 1 / 1.18;
+      // pinch fires many small-delta events — scale continuously with
+      // magnitude (clamped) instead of a fixed per-notch step
+      const d = Math.max(-60, Math.min(60, e.deltaY));
+      const factor = Math.exp(-d * 0.009);
       // k is geo-meters→px (~3e-4 at fit). 0.5 was 2000x zoom-out; 400 was
       // beyond absurd. Clamp to [fit/4, fit×250] using the fitted k.
       const kMin = (fitK.current ?? t.k) / 4;
