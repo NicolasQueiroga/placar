@@ -599,15 +599,23 @@ export const CanvasMap = memo(function CanvasMap({
     rafRef.current = requestAnimationFrame(draw);
   };
 
-  // base render on data change (expensive path runs ONCE)
+  // base render on data change (expensive path runs ONCE) — preserves the
+  // user's zoom/pan; only re-rasterizes the offscreen base + reschedules
   useEffect(() => {
     if (!loaded) return;
     renderBase();
-    fit();
-    view.current = { ...target.current };
     schedule();
     return () => cancelAnimationFrame(rafRef.current);
   }, [loaded, selected, ufProgress, ufResults, mode, turno]);
+
+  // fit the view only on first load or a race/turno switch — NEVER on data
+  // ticks, or the user's zoom snaps back every 15s
+  useEffect(() => {
+    if (!loaded) return;
+    fit();
+    view.current = { ...target.current };
+    schedule();
+  }, [loaded, mode, turno]);
 
   useEffect(() => {
     const onResize = () => {
