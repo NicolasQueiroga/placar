@@ -123,16 +123,35 @@ export function normalizeAcompanhamento(raw: TseAcompanhamento): UFProgress[] {
     }));
 }
 
+/**
+ * Last successfully parsed payload per URL. fetchJson returns null on a 304,
+ * but callers reset state on race/tab switches — so the *parsed* result is
+ * cached here too. 304 then re-yields the same object identity, and React's
+ * Object.is bail-out skips the re-render. 'unchanged' only survives when we
+ * have truly never seen data.
+ */
+const lastGood = new Map<string, unknown>();
+
 export async function fetchNational(election: string = ELECTIONS.presidente1, cargo: string = CARGOS.presidente): Promise<RaceData> {
-  const raw = await fetchJson<TseUnified>(unifiedUrl('br', cargo, election));
-  if (!raw) throw new Error('unchanged');
-  return normalizeUnified(raw);
+  const url = unifiedUrl('br', cargo, election);
+  const raw = await fetchJson<TseUnified>(url);
+  if (!raw) {
+    const cached = lastGood.get(url);
+    if (cached) return cached as RaceData;
+    throw new Error('unchanged');
+  }
+  const data = normalizeUnified(raw);
+  lastGood.set(url, data);
+  return data;
 }
 
 export async function fetchAcompanhamento(election: string = ELECTIONS.presidente1): Promise<UFProgress[]> {
-  const raw = await fetchJson<TseAcompanhamento>(acompanhamentoUrl(election));
-  if (!raw) return []; // 304 — caller keeps previous
-  return normalizeAcompanhamento(raw);
+  const url = acompanhamentoUrl(election);
+  const raw = await fetchJson<TseAcompanhamento>(url);
+  if (!raw) return (lastGood.get(url) as UFProgress[] | undefined) ?? [];
+  const data = normalizeAcompanhamento(raw);
+  lastGood.set(url, data);
+  return data;
 }
 
 export async function fetchUF(
@@ -140,9 +159,16 @@ export async function fetchUF(
   election: string = ELECTIONS.presidente1,
   cargo: string = CARGOS.presidente,
 ): Promise<RaceData> {
-  const raw = await fetchJson<TseUnified>(unifiedUrl(uf, cargo, election));
-  if (!raw) throw new Error('unchanged');
-  return normalizeUnified(raw);
+  const url = unifiedUrl(uf, cargo, election);
+  const raw = await fetchJson<TseUnified>(url);
+  if (!raw) {
+    const cached = lastGood.get(url);
+    if (cached) return cached as RaceData;
+    throw new Error('unchanged');
+  }
+  const data = normalizeUnified(raw);
+  lastGood.set(url, data);
+  return data;
 }
 
 /**

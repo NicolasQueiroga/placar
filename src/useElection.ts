@@ -39,10 +39,14 @@ export function useElection(): LiveState {
   const tick = useCallback(async () => {
     setError(null);
     try {
-      // Fast path: worker feed — 1 request for everything.
+      // Fast path: worker feed — 1 request for per-UF candidates.
       // Worker polls TSE on cron (2 min) so browser load is tiny.
+      // Caveats: feed rows carry no electorate stats (electors/turnout/
+      // blank/null are zero) and no UF progress — so the national file and
+      // the acompanhamento still come direct from TSE (ETag-cached, cheap).
+      // Only br-scoped races use the feed; uf-scoped go fully direct.
       const feed = await fetchFeed();
-      if (feed && feed.rows.size > 0) {
+      if (feed && feed.rows.size > 0 && race.scope === 'br') {
         const feedRaceKey =
           race.key === 'presidente' && turno === 2 ? 'presidente2' : race.key;
         const prefix = `${feedRaceKey}:`;
@@ -54,44 +58,37 @@ export function useElection(): LiveState {
         }
         if (perUf.size > 0) {
           setUfResults(perUf);
-          const br = perUf.get('BR');
-          if (race.scope === 'br' && br) {
-            setNational(br);
-          } else if (race.scope === 'uf') {
-            // synthesize national view by summing UF results
-            const all = [...perUf.values()];
-            setNational(() => {
-              const base = all[0];
-              const byId = new Map<string, { votes: number; c: RaceData['candidates'][number] }>();
-              for (const r of all) {
-                for (const c of r.candidates) {
-                  const e = byId.get(c.id);
-                  if (e) e.votes += c.votes;
-                  else byId.set(c.id, { votes: c.votes, c });
-                }
-              }
-              const candidates = [...byId.values()]
-                .sort((a, b) => b.votes - a.votes)
-                .map(({ votes, c }) => ({ ...c, votes, percent: 0 }));
-              const validVotes = all.reduce((acc, r) => acc + r.validVotes, 0);
-              for (const c of candidates) c.percent = validVotes > 0 ? (c.votes / validVotes) * 100 : 0;
-              return {
-                ...base,
-                candidates,
-                validVotes,
-                sectionsTotal: all.reduce((a, r) => a + r.sectionsTotal, 0),
-                sectionsCounted: all.reduce((a, r) => a + r.sectionsCounted, 0),
-                electorsTotal: all.reduce((a, r) => a + r.electorsTotal, 0),
-                electorsCounted: all.reduce((a, r) => a + r.electorsCounted, 0),
-                turnout: all.reduce((a, r) => a + r.turnout, 0),
-                abstention: all.reduce((a, r) => a + r.abstention, 0),
-                blank: all.reduce((a, r) => a + r.blank, 0),
-                nullVotes: all.reduce((a, r) => a + r.nullVotes, 0),
-              } satisfies RaceData;
-            });
+          const [ab, nat] = await Promise.allSettled([
+            fetchAcompanhamento(election),
+            fetchNational(election, race.cargo),
+          ]);
+          if (ab.status === 'fulfilled' && ab.value.length > 0) {
+            setUfProgress(new Map(ab.value.map((u) => [u.uf, u])));
+          } else {
+            // degrade: synthesize progress from the feed's section counts
+            setUfProgress(
+              new Map(
+                [...perUf.entries()]
+                  .filter(([uf]) => uf !== 'BR' && uf !== 'ZZ')
+                  .map(([uf, d]) => [
+                    uf,
+                    {
+                      uf,
+                      status: d.status,
+                      percentSections:
+                        d.sectionsTotal > 0 ? (d.sectionsCounted / d.sectionsTotal) * 100 : 0,
+                      electorsTotal: d.electorsTotal,
+                      electorsCounted: 0,
+                      updatedAt: d.generatedAt,
+                    } satisfies UFProgress,
+                  ]),
+              ),
+            );
           }
+          if (nat.status === 'fulfilled') setNational(nat.value);
+          else setNational((prev) => prev ?? perUf.get('BR') ?? null);
           if (mounted.current) setLastUpdated(Date.now());
-          return; // feed served everything — skip direct TSE this tick
+          return; // feed + direct national served everything
         }
       }
 
