@@ -304,20 +304,20 @@ export default {
     }
 
     if (url.pathname === '/history') {
-      const minutes = Math.min(Number(url.searchParams.get('minutes') ?? 60), 1440);
-      const since = Date.now() - minutes * 60_000;
+      // minutes caps at 35 days so the 1º-turno night (Oct 4) is reachable;
+      // from/to (epoch ms) let callers pin an exact historical window —
+      // e.g. the 1º-tab chart asks only for the Oct 4 counting night.
+      const minutes = Math.min(Number(url.searchParams.get('minutes') ?? 60), 50400);
+      const since = url.searchParams.get('from')
+        ? Number(url.searchParams.get('from'))
+        : Date.now() - minutes * 60_000;
+      const to = url.searchParams.get('to');
       const race = url.searchParams.get('race');
-      const { results } = race
-        ? await env.DB.prepare(
-            `SELECT ts, race, uf, sections_pct, candidates FROM history WHERE ts > ? AND race = ? ORDER BY ts`,
-          )
-            .bind(since, race)
-            .all()
-        : await env.DB.prepare(
-            `SELECT ts, race, uf, sections_pct, candidates FROM history WHERE ts > ? ORDER BY ts`,
-          )
-            .bind(since)
-            .all();
+      const sql = `SELECT ts, race, uf, sections_pct, candidates FROM history WHERE ts > ?${
+        to ? ' AND ts <= ?' : ''
+      }${race ? ' AND race = ?' : ''} ORDER BY ts`;
+      const binds = [since, ...(to ? [Number(to)] : []), ...(race ? [race] : [])];
+      const { results } = await env.DB.prepare(sql).bind(...binds).all();
       return jsonWithCors({ points: results }, { headers: { 'cache-control': 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=600' } });
     }
 

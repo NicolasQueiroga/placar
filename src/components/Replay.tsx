@@ -7,7 +7,16 @@ import { partyColor } from '../tse';
  * Sparse until the runoff night; on Oct 25 it replays the whole count.
  */
 
-const HISTORY_URL = 'https://placar-feed.nicolasqueiroga.workers.dev/history?minutes=1440';
+const HISTORY_URL = 'https://placar-feed.nicolasqueiroga.workers.dev/history';
+
+// 1º turno: pin to the Oct 4 counting night (same window as the chart);
+// 2º turno: the last 24 h, which covers the whole runoff night.
+const T1_NIGHT_START = 1791133200000; // 2026-10-04 14:00 BRT
+const T1_NIGHT_END = 1791212400000; //   2026-10-05 12:00 BRT
+const replayQuery = (race: 'presidente' | 'presidente2') =>
+  race === 'presidente'
+    ? `from=${T1_NIGHT_START}&to=${T1_NIGHT_END}`
+    : 'minutes=1440';
 
 interface ReplayCandidate {
   name: string;
@@ -34,7 +43,7 @@ export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'pre
 
   useEffect(() => {
     let alive = true;
-    fetch(`${HISTORY_URL}&race=${race}`, { headers: { Accept: 'application/json' } })
+    fetch(`${HISTORY_URL}?${replayQuery(race)}&race=${race}`, { headers: { Accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : { points: [] }))
       .then((d: { points: unknown[] }) => {
         if (!alive) return;

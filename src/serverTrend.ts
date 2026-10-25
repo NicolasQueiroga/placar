@@ -7,7 +7,16 @@ import type { TrendPoint } from './trend';
  * appendTrend between cron runs) are merged on top for freshness.
  */
 
-const HISTORY_URL = 'https://placar-feed.nicolasqueiroga.workers.dev/history?minutes=180';
+const HISTORY_URL = 'https://placar-feed.nicolasqueiroga.workers.dev/history';
+
+/**
+ * The 1º turno is a finished historical event: its counting night is
+ * Oct 4 14:00 → Oct 5 12:00 BRT (epoch ms, BRT = UTC-3). Pinning the
+ * window keeps the chart on that night instead of stretching three weeks
+ * of flat-100% cron rows.
+ */
+const T1_NIGHT_START = 1791133200000; // 2026-10-04 14:00 BRT
+const T1_NIGHT_END = 1791212400000; //   2026-10-05 12:00 BRT
 
 interface HistoryCandidate {
   name: string;
@@ -27,7 +36,11 @@ interface HistoryRow {
 
 export async function fetchServerTrend(race: 'presidente' | 'presidente2' = 'presidente'): Promise<TrendPoint[]> {
   try {
-    const res = await fetch(`${HISTORY_URL}&race=${race}`, { headers: { Accept: 'application/json' } });
+    const query =
+      race === 'presidente'
+        ? `from=${T1_NIGHT_START}&to=${T1_NIGHT_END}`
+        : 'minutes=180';
+    const res = await fetch(`${HISTORY_URL}?${query}&race=${race}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) return [];
     const data = (await res.json()) as { points: HistoryRow[] };
     const out: TrendPoint[] = [];
