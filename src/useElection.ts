@@ -56,7 +56,15 @@ export function useElection(): LiveState {
           const uf = key.slice(prefix.length);
           perUf.set(uf, data);
         }
-        if (perUf.size > 0) {
+        // Staleness guard: when TSE blocks the worker (its WAF hates
+        // Cloudflare IPs), feed rows freeze — a "fresh-looking" board of
+        // yesterday's zeros. Only trust rows the worker collected in the
+        // last 10 min; otherwise fall through to the fully-direct path,
+        // which works from browsers.
+        const freshUfs = [...perUf.values()].filter(
+          (d) => Date.now() - Date.parse(d.generatedAt) < 10 * 60_000,
+        ).length;
+        if (perUf.size > 0 && freshUfs >= 27) {
           setUfResults(perUf);
           const [ab, nat] = await Promise.allSettled([
             fetchAcompanhamento(election),

@@ -61,7 +61,7 @@ interface SnapshotRow {
   fetched_at: number;
 }
 
-async function fetchTse(url: string): Promise<TseUnified | null> {
+async function fetchTse(url: string, allowProxy = false): Promise<TseUnified | null> {
   try {
     const res = await fetch(url, {
       headers: {
@@ -73,13 +73,29 @@ async function fetchTse(url: string): Promise<TseUnified | null> {
       },
       cache: 'no-store',
     });
-    if (!res.ok) {
-      console.log(`tse ${res.status}: ${url}`);
-      return null;
-    }
-    return (await res.json()) as TseUnified;
+    if (res.ok) return (await res.json()) as TseUnified;
+    console.log(`tse ${res.status}: ${url}`);
   } catch (e) {
     console.log(`tse error ${e instanceof Error ? e.message : e}: ${url}`);
+  }
+
+  // TSE's WAF blocks Cloudflare egress IPs outright. r.jina.ai fetches
+  // server-side from THEIR IPs (free, keyless, 20 req/min — we use ~1/2min
+  // for the national BR file only, so the budget is never threatened).
+  if (!allowProxy) return null;
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`, { cache: 'no-store' });
+    if (!res.ok) {
+      console.log(`jina ${res.status}: ${url}`);
+      return null;
+    }
+    const text = await res.text();
+    const i = text.indexOf('{');
+    const j = text.lastIndexOf('}');
+    if (i < 0 || j <= i) return null;
+    return JSON.parse(text.slice(i, j + 1)) as TseUnified;
+  } catch (e) {
+    console.log(`jina error ${e instanceof Error ? e.message : e}: ${url}`);
     return null;
   }
 }
@@ -138,7 +154,13 @@ async function collectRace(env: Env, raceKeys: string[], withHistory: boolean): 
     const abrs: string[] = race.scope === 'br' ? ['BR', ...UFS] : [...UFS];
     const results = await Promise.allSettled(
       abrs.map((uf) =>
-        fetchTse(`${TSE_BASE}/${race.election}/dados/${uf.toLowerCase()}/${uf.toLowerCase()}-c${race.cargo}-e${String(race.election).padStart(6, '0')}-u.json`),
+        // proxy fallback only for the national file: it feeds the D1 minute
+        // archive, and keeps jina traffic at ~1 req/2min (UF boards are
+        // served to browsers straight from TSE, which works for them)
+        fetchTse(
+          `${TSE_BASE}/${race.election}/dados/${uf.toLowerCase()}/${uf.toLowerCase()}-c${race.cargo}-e${String(race.election).padStart(6, '0')}-u.json`,
+          uf === 'BR' && race.scope === 'br',
+        ),
       ),
     );
     results.forEach((r, i) => {
