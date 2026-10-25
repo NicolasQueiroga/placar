@@ -14,6 +14,7 @@ export const ELECTIONS = {
   presidente1: '6257',
   presidente2: '6258',
   estadual1: '6259',
+  estadual2: '6260', // governor runoffs Oct 25 — AC, AM, DF, ES, RN, TO only
 } as const;
 
 export const CARGOS = {

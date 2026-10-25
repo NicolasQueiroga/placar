@@ -181,7 +181,7 @@ export default function App() {
           ))}
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, marginLeft: 'auto' }}>
-          {race.key === 'presidente' && (
+          {race.runoff && (
             <span style={{ display: 'flex', gap: 2 }}>
               {([1, 2] as const).map((t) => (
                 <button
@@ -283,7 +283,7 @@ export default function App() {
           <section className="enter" style={{ paddingBottom: 26, borderBottom: '1px solid var(--line)' }}>
             <div className="eyebrow" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
               <span>
-                {race.label} · {race.key === 'presidente' ? (turno === 1 ? '1º turno' : '2º turno — 25 de outubro') : '1º turno'} · dados oficiais TSE
+                {race.label} · {race.runoff ? (turno === 1 ? '1º turno' : '2º turno — 25 de outubro') : '1º turno'} · dados oficiais TSE
               </span>
               <span className="num">
                 {((national.sectionsCounted / national.sectionsTotal) * 100).toFixed(1).replace('.', ',')}% apurado
@@ -324,7 +324,8 @@ export default function App() {
                 flexWrap: 'wrap',
               }}
             >
-              <span>cor = partido vencedor {race.key === 'presidente' && turno === 2 ? 'no estado' : 'no município'}</span>
+              <span>cor = partido vencedor {race.key === 'presidente' && turno !== 2 ? 'no município' : 'no estado'}</span>
+              {race.key === 'governador' && turno === 2 && <span>apagado = estado sem 2º turno</span>}
               <span>tom = vantagem (claro = disputado, forte = vitória ampla)</span>
               <span>
                 {coarsePointer
@@ -357,7 +358,7 @@ export default function App() {
                 )}
               </div>
             )}
-            {race.key === 'governador' && <GovernorSummary ufProgress={ufProgress} ufResults={ufResults} />}
+            {race.key === 'governador' && <GovernorSummary ufProgress={ufProgress} ufResults={ufResults} turno={turno} />}
             <RemainingMeter national={national} />
             <Stat label="Comparecimento" value={turnoutPct} suffix="%" />
             <Stat
@@ -406,6 +407,7 @@ export default function App() {
                   ufProgress={ufProgress}
                   ufResults={ufResults}
                   kind={race.key === 'governador' ? 'runoff' : 'plurality'}
+                  turno={turno}
                 />
               )}
             </div>
@@ -486,13 +488,17 @@ function Stat({ label, value, suffix = '' }: { label: string; value: number; suf
   );
 }
 
-/** For governor races: how many states are decided vs going to a runoff. */
+/** For governor races: how many states are decided vs going to a runoff.
+ *  Turno 2 reads the 6260 acompanhamento — only the 6 runoff states exist
+ *  there, so "total" is 6, and decided means the runoff winner is in. */
 function GovernorSummary({
   ufProgress,
   ufResults,
+  turno,
 }: {
   ufProgress: Map<string, UFProgress>;
   ufResults: Map<string, RaceData>;
+  turno: 1 | 2;
 }) {
   const states = [...ufProgress.values()].map((u) => {
     const leader = ufResults.get(u.uf)?.candidates[0];
@@ -500,7 +506,7 @@ function GovernorSummary({
     return { decided: !!(leader && nearDone && leader.percent > 50) };
   });
   const decided = states.filter((s) => s.decided).length;
-  const total = states.length || 27;
+  const total = states.length || (turno === 2 ? 6 : 27);
   return (
     <div style={{ minWidth: 200 }}>
       <div className="eyebrow">Governadores</div>
@@ -509,7 +515,7 @@ function GovernorSummary({
           {decided}
         </span>
         <span className="num" style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-          de {total} estados decididos no 1º turno
+          de {total} estados {turno === 2 ? 'em 2º turno decididos' : 'decididos no 1º turno'}
         </span>
       </div>
     </div>

@@ -429,6 +429,10 @@ export const CanvasMap = memo(function CanvasMap({
       } else {
         const l = ufLeader.get(m.uf);
         if (l) fill = marginTone(l.color, l.margin);
+        // states with no result rows have no election tonight (governador
+        // 2º turno: only AC, AM, DF, ES, RN, TO vote) — dim them well below
+        // the neutral pre-count tone so the map says "not voting here"
+        else if (ufResults.size > 0 && !ufResults.has(m.uf)) fill = '#14120e';
       }
       let p = byColor.get(fill);
       if (!p) byColor.set(fill, (p = new Path2D()));

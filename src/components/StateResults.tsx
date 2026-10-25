@@ -23,10 +23,12 @@ export const StateResults = memo(function StateResults({
   ufProgress,
   ufResults,
   kind,
+  turno = 1,
 }: {
   ufProgress: Map<string, UFProgress>;
   ufResults: Map<string, RaceData>;
   kind: RowKind;
+  turno?: 1 | 2;
 }) {
   const rows = useMemo<StateRow[]>(
     () =>
@@ -131,7 +133,10 @@ export const StateResults = memo(function StateResults({
                     color: decided ? 'var(--green-urna)' : 'var(--runoff)',
                   }}
                 >
-                  {decided ? '1º TURNO' : '2º TURNO'}
+                  {/* turno-aware: on the 1º-turno view the chip tells HOW the
+                      state was decided; on the 2º-turno view the leader of a
+                      99.9%+ runoff is simply the governor-elect */}
+                  {turno === 2 ? (decided ? 'ELEITO' : '2º TURNO') : decided ? '1º TURNO' : '2º TURNO'}
                 </div>
               )}
             </div>

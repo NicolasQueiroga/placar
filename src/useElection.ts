@@ -26,8 +26,23 @@ export function useElection(): LiveState {
   // runoff day default: land on the 2nd round (flip back to 1 after Oct 2026)
   const [turno, setTurno] = useState<1 | 2>(2);
   const race = RACES.find((r) => r.key === raceKey) ?? RACES[0];
-  // presidential runoff runs under its own election code
-  const election = race.key === 'presidente' && turno === 2 ? ELECTIONS.presidente2 : race.election;
+  // runoffs run under their own election codes — presidential (6258) AND
+  // gubernatorial (6260: AC, AM, DF, ES, RN, TO). senador/dep.federal are
+  // single-round: they always read the 1º-turno election
+  const election =
+    race.key === 'presidente' && turno === 2
+      ? ELECTIONS.presidente2
+      : race.key === 'governador' && turno === 2
+        ? ELECTIONS.estadual2
+        : race.election;
+  // acompanhamento (UF progress) for the uf-scoped direct path: 6260 lists
+  // only the 6 runoff states — exactly what should be fetched on turno 2
+  const abElection =
+    race.scope === 'br'
+      ? election
+      : race.key === 'governador' && turno === 2
+        ? ELECTIONS.estadual2
+        : ELECTIONS.estadual1;
   const [national, setNational] = useState<RaceData | null>(null);
   const [ufProgress, setUfProgress] = useState<Map<string, UFProgress>>(new Map());
   const [ufResults, setUfResults] = useState<Map<string, RaceData>>(new Map());
@@ -101,10 +116,8 @@ export function useElection(): LiveState {
       }
 
       // Fallback: direct TSE (worker unreachable or empty)
-      // Acompanhamento (EA14) — same file for the whole estadual election
-      const ab = await fetchAcompanhamento(
-        race.scope === 'br' ? election : ELECTIONS.estadual1,
-      ).catch(() => null);
+      // Acompanhamento (EA14) — one file per election
+      const ab = await fetchAcompanhamento(abElection).catch(() => null);
       const ufs = ab ?? [];
       if (ufs.length > 0) setUfProgress(new Map(ufs.map((u) => [u.uf, u])));
 
@@ -184,7 +197,7 @@ export function useElection(): LiveState {
     } finally {
       if (mounted.current) setLoading(false);
     }
-  }, [race, turno, election]);
+  }, [race, turno, election, abElection]);
 
   useEffect(() => {
     mounted.current = true;
