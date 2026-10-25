@@ -202,9 +202,9 @@ export const RunoffHistory = memo(function RunoffHistory() {
         className="num"
         style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 12, lineHeight: 1.6 }}
       >
-        Em {LEADER_RUNOFF_RECORD} disputas desde 1989, o líder do 1º turno venceu o 2º. Mas a margem
-        final caiu de +14,9 p.p. (2002) a +1,8 p.p. (2022) — margens de ~2 p.p. como a de hoje são
-        genuinamente disputáveis.
+        Em {LEADER_RUNOFF_RECORD} disputas desde 1989, o líder do 1º turno venceu o 2º. A margem
+        final variou de +14,9 p.p. (2002) a +1,8 p.p. (2022). São resultados históricos,
+        não uma previsão para 2026.
       </p>
     </div>
   );

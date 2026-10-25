@@ -181,9 +181,8 @@ export const Manchete = memo(function Manchete({
         {countingStage(counted)}
       </div>
       <div
-        className="sent-in"
-        key={current.id}
         style={{
+          display: 'grid',
           fontFamily: 'var(--font-serif)',
           fontSize: 'clamp(19px, 2.4vw, 26px)',
           fontWeight: 400,
@@ -195,7 +194,21 @@ export const Manchete = memo(function Manchete({
         }}
         aria-live="polite"
       >
-        {current.node}
+        {/* Overlapping grid cells reserve the tallest sentence at any width.
+            Inactive copy contributes layout only, never visual/a11y content. */}
+        {sentences.map((sentence) => (
+          <div
+            key={sentence.id}
+            className={sentence.id === current.id ? 'sent-in' : undefined}
+            aria-hidden={sentence.id !== current.id}
+            style={{
+              gridArea: '1 / 1',
+              visibility: sentence.id === current.id ? 'visible' : 'hidden',
+            }}
+          >
+            {sentence.node}
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -354,13 +354,13 @@ export default function App() {
               alignItems: 'baseline',
             }}
           >
-            {race.scope === 'br' && forecast && (
+            {race.scope === 'br' && (
               <div style={{ minWidth: 200, flex: '0 1 auto' }}>
                 {turno === 2 ? (
                   <MarginCard national={national} />
-                ) : (
+                ) : forecast ? (
                   <RunoffGauge forecast={forecast} national={national} />
-                )}
+                ) : null}
               </div>
             )}
             {race.key === 'governador' && <GovernorSummary ufProgress={ufProgress} ufResults={ufResults} turno={turno} />}
@@ -480,7 +480,7 @@ export default function App() {
           >
             resultados.tse.jus.br
           </a>
-          . modelo de 2º turno: estimativa estatística, não é resultado oficial.
+          .{turno === 1 && forecast && ' Modelo de 2º turno: estimativa estatística, não é resultado oficial.'}
         </span>
         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <span>fonte: resultados.tse.jus.br · feed próprio com snapshots a cada 2 min</span>

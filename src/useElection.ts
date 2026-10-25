@@ -214,7 +214,9 @@ export function useElection(): LiveState {
   }, [tick, turno]);
 
   const forecast =
-    national && race.runoff ? forecastSecondRound(national, [...ufProgress.values()], ufResults) : null;
+    national && race.runoff && turno === 1
+      ? forecastSecondRound(national, [...ufProgress.values()], ufResults)
+      : null;
 
   return {
     national,
