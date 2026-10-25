@@ -70,8 +70,15 @@ export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'pre
             });
           }
         }
-        setPoints(pts);
-        if (pts.length > 0) setTsPos(Math.floor(pts[pts.length - 1].ts / 60_000));
+        // Collapse consecutive identical states: after the count ends the
+        // cron keeps re-collecting the unchanged final file every 2 min,
+        // which would otherwise drag a dead tail of duplicate frames past
+        // the real end of the night (same pollution the 1º turno had).
+        const state = (p: ReplayPoint) =>
+          `${p.sections_pct.toFixed(6)}|${p.candidates.map((c) => c.votes).join('/')}`;
+        const collapsed = pts.filter((p, i) => i === 0 || state(p) !== state(pts[i - 1]));
+        setPoints(collapsed);
+        if (collapsed.length > 0) setTsPos(Math.floor(collapsed[collapsed.length - 1].ts / 60_000));
       })
       .catch(() => alive && setPoints([]));
     return () => {

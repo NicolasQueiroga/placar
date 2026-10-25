@@ -193,7 +193,10 @@ async function collectRace(env: Env, raceKeys: string[], withHistory: boolean): 
   if (withHistory) {
     for (const raceKey of ['presidente', 'presidente2']) {
       const br = rows.find((r) => r.race === raceKey && r.uf === 'BR');
-      if (br) {
+      // only archive once the count actually has sections — pre-count
+      // zero-state generations (TSE republishes the empty file for hours
+      // before 17h) would otherwise pollute /history with flat-0% rows
+      if (br && br.sections_counted > 0) {
         stmts.push(
           env.DB.prepare(
             `INSERT INTO history (ts, race, uf, sections_pct, candidates) VALUES (?, ?, ?, ?, ?)`,

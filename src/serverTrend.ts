@@ -11,12 +11,21 @@ const HISTORY_URL = 'https://placar-feed.nicolasqueiroga.workers.dev/history';
 
 /**
  * The 1º turno is a finished historical event: its counting night is
- * Oct 4 14:00 → Oct 5 12:00 BRT (epoch ms, BRT = UTC-3). Pinning the
+ * Oct 4 14:00 → Oct 5 03:30 BRT (epoch ms, BRT = UTC-3). Pinning the
  * window keeps the chart on that night instead of stretching three weeks
  * of flat-100% cron rows.
  */
 const T1_NIGHT_START = 1791133200000; // 2026-10-04 14:00 BRT
-const T1_NIGHT_END = 1791181800000; //   2026-10-05 12:00 BRT
+const T1_NIGHT_END = 1791181800000; //   2026-10-05 03:30 BRT
+
+/**
+ * The 2º-turno counting night: urnas 8h–17h, apuração a partir das 17h,
+ * resultado previsto 20h30–21h (TSE). Generous end cap at Oct 26 04:00
+ * BRT — trim to the real end once the night is done. Bounding the window
+ * keeps pre-count zero-state rows out of the chart.
+ */
+export const T2_NIGHT_START = 1792958400000; // 2026-10-25 17:00 BRT
+export const T2_NIGHT_END = 1792998000000; //   2026-10-26 04:00 BRT
 
 interface HistoryCandidate {
   name: string;
@@ -39,7 +48,7 @@ export async function fetchServerTrend(race: 'presidente' | 'presidente2' = 'pre
     const query =
       race === 'presidente'
         ? `from=${T1_NIGHT_START}&to=${T1_NIGHT_END}`
-        : 'minutes=180';
+        : `from=${T2_NIGHT_START}&to=${T2_NIGHT_END}`;
     const res = await fetch(`${HISTORY_URL}?${query}&race=${race}`, { headers: { Accept: 'application/json' } });
     if (!res.ok) return [];
     const data = (await res.json()) as { points: HistoryRow[] };

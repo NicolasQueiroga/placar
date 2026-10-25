@@ -17,7 +17,7 @@ import { TVMode } from './components/TVMode';
 import { Replay } from './components/Replay';
 import { RACES } from './tse';
 import { appendTrend, loadTrend } from './trend';
-import { fetchServerTrend, mergeTrends } from './serverTrend';
+import { fetchServerTrend, mergeTrends, T2_NIGHT_START, T2_NIGHT_END } from './serverTrend';
 import { archiveNational } from './archive';
 import type { TrendPoint } from './trend';
 import { useAlerts } from './alerts';
@@ -76,7 +76,17 @@ export default function App() {
       // finished race: show only the Oct 4 counting night — drop today's
       // flat-100% points (local + any cron rows) that stretch the x-axis
       const inNight = (p: TrendPoint) =>
-        p.t >= 1791133200000 && p.t <= 1791181800000; // Oct 4 14:00 → Oct 5 12:00 BRT
+        p.t >= 1791133200000 && p.t <= 1791181800000; // Oct 4 14:00 → Oct 5 03:30 BRT
+      return mergeTrends(
+        serverTrend.filter(inNight),
+        trend.filter(inNight),
+      );
+    }
+    if (seriesKey === 'presidente:2') {
+      // live counting night: pin to the official apuração window (urnas
+      // close 17h, TSE publishes from 17h) so hours of pre-count zero-state
+      // points don't stretch the x-axis with a flat 0% line
+      const inNight = (p: TrendPoint) => p.t >= T2_NIGHT_START && p.t <= T2_NIGHT_END;
       return mergeTrends(
         serverTrend.filter(inNight),
         trend.filter(inNight),
@@ -398,8 +408,13 @@ export default function App() {
 
           {/* TREND — full width */}
           <section className="enter" style={{ marginTop: 26 }}>
-            <div className="eyebrow" style={{ marginBottom: 8 }}>
-              Evolução — {race.label} (arquivo do servidor + esta sessão)
+            <div className="eyebrow" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <span>Evolução — {race.label} (arquivo do servidor + esta sessão)</span>
+              {race.key === 'presidente' && turno === 2 && (
+                <span style={{ textTransform: 'none', letterSpacing: '.04em' }}>
+                  urnas 8h–17h · apuração a partir das 17h · resultado previsto entre 20h30 e 21h (TSE) · totalização completa na madrugada
+                </span>
+              )}
             </div>
             <TrendChart points={mergedTrend} candidates={national.candidates} />
           </section>
