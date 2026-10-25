@@ -6,7 +6,7 @@ import { partyColor } from '../tse';
 const pct1 = (v: number) => v.toFixed(1).replace('.', ',');
 
 /** Duel bar: both finalists' shares in one bar meeting at the split, 50% tick. */
-function DuelBar({
+export function DuelBar({
   a,
   aShare,
   b,

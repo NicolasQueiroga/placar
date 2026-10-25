@@ -8,6 +8,7 @@ import { RunoffGauge, RemainingMeter } from './components/RunoffGauge';
 import { UFTable } from './components/UFTable';
 import { TrendChart } from './components/TrendChart';
 import { RunoffScenarios, RunoffHistory } from './components/RunoffScenarios';
+import { WhatsLeft } from './components/WhatsLeft';
 import { Manchete } from './components/Manchete';
 import { StateResults } from './components/StateResults';
 import { CountUp } from './components/CountUp';
@@ -380,10 +381,16 @@ export default function App() {
             <TrendChart points={mergedTrend} candidates={national.candidates} />
           </section>
 
-          {/* SCENARIOS — presidential only */}
+          {/* SCENARIOS — presidential only. 1º turno looks forward (runoff
+              scenarios); on the 2º turno the question is live: where is the
+              remaining vote and who does it favor */}
           {race.key === 'presidente' && (
             <section className="enter" style={{ marginTop: 26 }}>
-              <RunoffScenarios national={national} />
+              {turno === 2 ? (
+                <WhatsLeft national={national} ufProgress={ufProgress} ufResults={ufResults} />
+              ) : (
+                <RunoffScenarios national={national} />
+              )}
               <RunoffHistory />
               <div style={{ marginTop: 20 }}>
                 <Replay />
