@@ -219,6 +219,32 @@ body {
   }
 }
 
+/* Replay "moment" row: a single flex line on desktop; on phones the two
+   percentages pin to the edges, names sit centered between them, and the
+   timestamp drops to its own row — flex-wrap used to strand the red
+   percentage alone on the second line depending on content width */
+@media (max-width: 560px) {
+  .replay-moment {
+    display: grid !important;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: baseline;
+    column-gap: 8px;
+  }
+  .replay-moment .rp-names {
+    justify-self: center;
+    text-align: center;
+    min-width: 0;
+  }
+  .replay-moment .rp-b {
+    text-align: right;
+  }
+  .replay-moment .rp-when {
+    grid-column: 1 / -1;
+    margin-left: 0 !important;
+    margin-top: 6px;
+  }
+}
+
 /* Phone topbar: brand + controls stay on row 1, race tabs drop to their
    own full-width row and scroll horizontally instead of overflowing the
    page (was 74px of clipped tabs at 390px) */

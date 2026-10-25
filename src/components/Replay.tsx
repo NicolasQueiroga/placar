@@ -162,24 +162,27 @@ export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'pre
         </div>
       </div>
 
-      {/* the moment */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'clamp(16px, 3vw, 40px)', marginTop: 14, flexWrap: 'wrap' }}>
+      {/* the moment — flex line on desktop, pinned grid on phones (css) */}
+      <div
+        className="replay-moment"
+        style={{ display: 'flex', alignItems: 'baseline', gap: 'clamp(16px, 3vw, 40px)', marginTop: 14, flexWrap: 'wrap' }}
+      >
         {a && (
-          <span className="fig" style={{ fontSize: 'clamp(30px, 4vw, 52px)', color: partyColor(a.party, a.party) }}>
+          <span className="fig" style={{ fontSize: 'clamp(26px, 4vw, 52px)', color: partyColor(a.party, a.party) }}>
             {pct(a.pct)}
           </span>
         )}
         {a && b && (
-          <span className="num" style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+          <span className="num rp-names" style={{ fontSize: 12, color: 'var(--text-dim)' }}>
             {a.name} × {b.name}
           </span>
         )}
         {b && (
-          <span className="fig" style={{ fontSize: 'clamp(30px, 4vw, 52px)', color: partyColor(b.party, b.party) }}>
+          <span className="fig rp-b" style={{ fontSize: 'clamp(26px, 4vw, 52px)', color: partyColor(b.party, b.party) }}>
             {pct(b.pct)}
           </span>
         )}
-        <span className="num" style={{ fontSize: 12, color: 'var(--text-faint)', marginLeft: 'auto' }}>
+        <span className="num rp-when" style={{ fontSize: 12, color: 'var(--text-faint)', marginLeft: 'auto' }}>
           {t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {cur.sections_pct.toFixed(1).replace('.', ',')}% apurado
         </span>
       </div>

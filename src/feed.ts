@@ -37,6 +37,12 @@ export interface FeedSnapshot {
 
 function toRaceData(row: FeedRow): RaceData {
   const cands: FeedCandidate[] = JSON.parse(row.candidates);
+  // the feed shape drops TSE's st flags — re-derive runoff qualification
+  // for 1º-turno races (top-2, count final, nobody above 50%) so the
+  // qualifier chips survive the feed fast-path too
+  const isRunoffRace = row.race === 'presidente' || row.race === 'governador';
+  const countFinal = row.sections_total > 0 && row.sections_counted >= row.sections_total;
+  const runoffFrom = isRunoffRace && countFinal && (cands[0]?.pct ?? 100) < 50 ? 2 : 0;
   const candidates: Candidate[] = cands.map((c, i) => ({
     id: `${row.race}-${row.uf}-${i}`,
     ballotName: c.name,
@@ -47,6 +53,7 @@ function toRaceData(row: FeedRow): RaceData {
     votes: c.votes,
     percent: c.pct,
     elected: false,
+    runoff: i < runoffFrom,
   }));
   return {
     // TSE's final flag ('at') doesn't survive into this file shape — the

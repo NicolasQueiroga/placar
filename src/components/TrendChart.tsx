@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type { TrendPoint } from '../trend';
 import type { Candidate } from '../types';
 import { partyColor } from '../tse';
@@ -14,13 +14,22 @@ export const TrendChart = memo(function TrendChart({
   points: TrendPoint[];
   candidates: Candidate[];
 }) {
-  const W = 640;
+  // viewBox follows the viewport: a fixed 640-wide viewBox squeezed into a
+  // 390px phone renders 9px labels at ~5px — unreadable. 400px on phones
+  // keeps text near its intended size (recomputed on orientation change).
+  const [vw, setVw] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const on = () => setVw(window.innerWidth);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  const W = vw < 560 ? 400 : 640;
   const H = 180;
-  const PAD = { l: 34, r: 8, t: 10, b: 18 };
+  const PAD = { l: 30, r: 40, t: 10, b: 18 }; // r: room for end-of-line values
 
   const series = useMemo(() => {
     const top = candidates.slice(0, 4);
-    return top.map((c) => ({
+    const all = top.map((c) => ({
       id: c.id,
       name: c.ballotName,
       color: partyColor(c.party, c.coalition),
@@ -28,7 +37,15 @@ export const TrendChart = memo(function TrendChart({
         .map((p) => ({ t: p.t, v: p.percents[c.id] }))
         .filter((p) => p.v !== undefined),
     }));
+    // candidates peaking under 5% (Cury 2,9%, Renan ~0,8% in 2026) pin the
+    // y-domain to 0→54 and squash the actual race into a flat band at the
+    // top — drop them from the chart (their numbers stay in the tables);
+    // always keep at least the top 2 (start of the count: everyone at 0%)
+    const visible = all.filter((s) => Math.max(0, ...s.pts.map((p) => p.v)) >= 5);
+    return visible.length >= 2 ? visible : all.slice(0, 2);
   }, [points, candidates]);
+
+  const dropped = candidates.length > series.length;
 
   if (points.length < 2) {
     return (
@@ -41,14 +58,26 @@ export const TrendChart = memo(function TrendChart({
   const t0 = points[0].t;
   const t1 = points[points.length - 1].t;
   const x = (t: number) => PAD.l + ((t - t0) / Math.max(1, t1 - t0)) * (W - PAD.l - PAD.r);
-  // y domain: min/max of series, padded, clamped around 0-100
+  // y domain: min/max of the DRAWN series, padded, clamped around 0-100
   const vals = series.flatMap((s) => s.pts.map((p) => p.v));
+  if (vals.length === 0) return null;
   const lo = Math.max(0, Math.floor(Math.min(...vals) - 2));
   const hi = Math.min(100, Math.ceil(Math.max(...vals) + 2));
   const y = (v: number) => PAD.t + (1 - (v - lo) / Math.max(1e-9, hi - lo)) * (H - PAD.t - PAD.b);
 
   const fmtTime = (t: number) =>
     new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  // end-of-line value labels — touch has no hover, so the current number
+  // lives at the end of each line; nudged apart when the lines converge
+  const endLabels = series
+    .map((s) => ({ s, last: s.pts[s.pts.length - 1] }))
+    .filter((l) => l.last)
+    .map((l) => ({ ...l, ly: y(l.last.v) }))
+    .sort((a, b) => a.ly - b.ly);
+  for (let i = 1; i < endLabels.length; i++) {
+    if (endLabels[i].ly - endLabels[i - 1].ly < 11) endLabels[i].ly = endLabels[i - 1].ly + 11;
+  }
 
   return (
     <div>
@@ -84,6 +113,14 @@ export const TrendChart = memo(function TrendChart({
             />
           ),
         )}
+        {endLabels.map((l) => (
+          <g key={l.s.id}>
+            <circle cx={x(l.last.t)} cy={y(l.last.v)} r={2} fill={l.s.color} />
+            <text x={W - PAD.r + 5} y={l.ly + 3.5} fontSize={10} fontWeight={700} fill={l.s.color} className="num">
+              {l.last.v.toFixed(1).replace('.', ',')}
+            </text>
+          </g>
+        ))}
         {/* x labels: first, middle, last */}
         {[t0, (t0 + t1) / 2, t1].map((t, i) => (
           <text
@@ -106,6 +143,11 @@ export const TrendChart = memo(function TrendChart({
             {s.name}
           </span>
         ))}
+        {dropped && (
+          <span className="num" style={{ fontSize: 10, color: 'var(--text-faint)' }}>
+            · candidatos abaixo de 5% ficam fora do gráfico
+          </span>
+        )}
       </div>
     </div>
   );

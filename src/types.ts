@@ -81,6 +81,7 @@ export interface Candidate {
   votes: number;
   percent: number; // of valid votes
   elected: boolean;
+  runoff?: boolean; // qualified for the 2º turno (TSE st='2º turno', e='s')
   runningMate?: string;
 }
 

@@ -86,7 +86,10 @@ export function normalizeUnified(raw: TseUnified): RaceData {
           coalition: agr.com,
           votes: int(c.vap),
           percent: brNum(c.pvapn),
-          elected: c.e === 's',
+          // e='s' means "still qualified", NOT elected: in a 1º turno both
+          // runoff candidates get e='s' with st='2º turno'. Trust st first.
+          elected: c.st ? c.st.startsWith('Eleito') : c.e === 's',
+          runoff: c.st === '2º turno',
           runningMate: c.vs?.[0]?.nmu,
         });
       }

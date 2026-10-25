@@ -87,9 +87,25 @@ const Row = memo(function Row({
                 border: '1px solid var(--green-urna)',
                 padding: '1px 6px',
                 borderRadius: 2,
+                whiteSpace: 'nowrap',
               }}
             >
               ELEITO
+            </span>
+          )}
+          {!c.elected && c.runoff && (
+            <span
+              style={{
+                fontSize: 10,
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-dim)',
+                border: '1px solid var(--line)',
+                padding: '1px 6px',
+                borderRadius: 2,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              2º TURNO
             </span>
           )}
         </div>
