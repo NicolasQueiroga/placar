@@ -458,7 +458,8 @@ export const CanvasMap = memo(function CanvasMap({
     }
     const centroids = new Map<string, { x: number; y: number }>();
     for (const [uf, a] of ufAgg) {
-      if (a.w && !CHIP_UFS.has(uf)) centroids.set(uf, { x: a.x / a.w, y: a.y / a.w });
+      // small states get centroids too — paintMap shows them once zoomed in
+      if (a.w) centroids.set(uf, { x: a.x / a.w, y: a.y / a.w });
     }
     labelDataRef.current = {
       centroids,
@@ -480,18 +481,17 @@ export const CanvasMap = memo(function CanvasMap({
     const bctx = c.getContext('2d')!;
     bctx.clearRect(0, 0, w, h);
     paintMap(bctx, RES, -x0 * RES, -y0 * RES);
-    detailDirty.current = true; // colors/labels changed — detail must re-render
+    detailDirty.current = true; // map colors changed — detail must re-render
   };
 
   /**
-   * Paint the full scene (fills, borders, state lines, labels) into a
+   * Paint geometry only (fills, borders, state lines) into a
    * context at an arbitrary geo→canvas-px transform. Shared by the coarse
    * base and the per-viewport detail layer.
    *   k, ox, oy: canvas px per geo-meter + offset (same shape as the view)
    */
   const paintMap = (ctx: CanvasRenderingContext2D, k: number, ox: number, oy: number) => {
     const paths = pathsRef.current;
-    const labels = labelDataRef.current;
     if (!paths || !geo.current) return;
 
     ctx.setTransform(k, 0, 0, k, ox, oy);
@@ -509,22 +509,31 @@ export const CanvasMap = memo(function CanvasMap({
     ctx.strokeStyle = 'rgba(245,242,235,.85)';
     ctx.lineWidth = 3800;
     ctx.stroke(geo.current.stateBorders);
+  };
 
+  // Draw text directly on the visible canvas, in CSS pixels, every frame.
+  // Never bake it into either map raster: zoom would magnify the letters,
+  // and switching between coarse/detail layers would change their size.
+  const paintLabels = (ctx: CanvasRenderingContext2D, k: number, ox: number, oy: number) => {
+    const labels = labelDataRef.current;
     if (!labels) return;
-    // Labels in CANVAS-PIXEL space (identity transform): Chromium clamps
-    // canvas fonts above ~30-60k px, so geo-unit fonts silently render tiny.
-    // Geo-constant size: 13 css-px at fit, scaling with the map as you zoom.
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const fk = fitK.current || k;
-    const fontUf = (13 * k) / fk;
-    const fontPct = (11.5 * k) / fk;
+    const zoom = k / (fitK.current || k);
+    if (zoom >= 4) return; // municipal close-up: state labels only obstruct it
+    ctx.globalAlpha = Math.min(1, (4 - zoom) / 0.5);
+    const labelScale = Math.min(zoom, 1);
+    const fontUf = 13 * labelScale;
+    const fontPct = 11.5 * labelScale;
     const halo = fontUf * 0.22;
     const px = (gx: number) => gx * k + ox;
     const py = (gy: number) => gy * k + oy;
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    // tiny coastal states collide at fit zoom — the chips rail covers them
+    // there. Once the user zooms in (~2.3x) there's room: label them too.
+    const showSmall = zoom > 2.3;
     for (const [uf, c] of labels.centroids) {
+      if (!showSmall && CHIP_UFS.has(uf)) continue;
       const cx = px(c.x);
       const cy = py(c.y);
       const lead = labels.leaders.get(uf);
@@ -609,12 +618,18 @@ export const CanvasMap = memo(function CanvasMap({
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap || !geo.current || !results.current) return;
-    const dpr = window.devicePixelRatio || 1;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
     const W = wrap.clientWidth;
     const H = wrap.clientHeight || 460;
-    if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
+    // Match renderDetail's pixel budget, including on 3x iPhones. Otherwise
+    // detailMatches is always false and the sharp layer is never displayed.
+    const cap = 4096 / Math.max(W * dpr, H * dpr);
+    if (cap < 1) dpr *= cap;
+    const width = Math.ceil(W * dpr);
+    const height = Math.ceil(H * dpr);
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
     }
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -684,6 +699,10 @@ export const CanvasMap = memo(function CanvasMap({
       ctx.stroke(hover.mun.path);
     }
 
+    ctx.restore();
+
+    ctx.save();
+    paintLabels(ctx, v.k, v.ox, v.oy);
     ctx.restore();
 
     if (!still) {

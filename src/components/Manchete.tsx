@@ -11,12 +11,21 @@ interface Sentence {
   node: React.ReactNode;
 }
 
-/** The same 4-point margin reads differently at 20% and at 95% counted. */
-function marginComment(margin: number, counted: number): string {
-  const late = counted >= 90;
-  if (margin < 3) return late ? 'apertadíssima até o fim.' : 'uma disputa apertadíssima.';
-  if (margin < 6) return late ? 'vantagem que já parece definida.' : 'uma vantagem clara, mas não definitiva.';
-  return late ? 'folga praticamente irreversível.' : 'uma folga considerável.';
+/** Counting progress is context, not evidence that the sample is representative. */
+function countingStage(counted: number): string {
+  if (counted <= 0) return 'Aguardando o início da apuração.';
+  if (counted < 1) return 'Ainda é cedo: menos de 1% das seções apuradas.';
+  if (counted < 10) return `Apuração inicial: ${pct1(counted)}% das seções apuradas.`;
+  if (counted < 50) return `Menos da metade das seções apuradas: ${pct1(counted)}%.`;
+  if (counted < 90) return `Apuração em andamento: ${pct1(counted)}% das seções apuradas.`;
+  if (counted < 100) return `Reta final da apuração: ${pct2(counted)}% das seções apuradas.`;
+  return '100% das seções apuradas.';
+}
+
+function marginComment(counted: number): string {
+  if (counted < 10) return 'a apuração ainda é inicial; os primeiros resultados não representam o país inteiro.';
+  if (counted < 100) return 'resultado parcial; as seções restantes podem ter um perfil de voto diferente.';
+  return 'com todas as seções apuradas.';
 }
 
 /**
@@ -37,6 +46,9 @@ export const Manchete = memo(function Manchete({
   turno: 1 | 2;
   ufProgress: Map<string, UFProgress>;
 }) {
+  const counted = national.sectionsTotal > 0
+    ? Math.min(100, (national.sectionsCounted / national.sectionsTotal) * 100)
+    : 0;
   const sentences = useMemo<Sentence[]>(() => {
     const a = national.candidates[0];
     const b = national.candidates[1];
@@ -44,8 +56,11 @@ export const Manchete = memo(function Manchete({
     const aColor = partyColor(a.party, a.coalition);
     const bColor = partyColor(b.party, b.coalition);
     const margin = a.percent - b.percent;
-    const counted = (national.sectionsCounted / national.sectionsTotal) * 100;
     const out: Sentence[] = [];
+    if (national.sectionsCounted <= 0 || national.validVotes <= 0) {
+      return [{ id: 'waiting', node: 'Os resultados dos candidatos aparecem quando as primeiras seções forem totalizadas.' }];
+    }
+    const complete = counted === 100;
 
     const name = (c: typeof a, color: string) => (
       <span style={{ color, fontWeight: 600 }}>{c.ballotName}</span>
@@ -56,8 +71,8 @@ export const Manchete = memo(function Manchete({
       id: 'situation',
       node: (
         <>
-          {name(a, aColor)} lidera com {pct2(a.percent)}% contra {pct2(b.percent)}% de{' '}
-          {name(b, bColor)}, com {pct1(counted)}% das seções apuradas.
+          {name(a, aColor)} {a.elected ? 'foi eleito com' : complete ? 'terminou com' : 'tem'} {pct2(a.percent)}% contra {pct2(b.percent)}% de{' '}
+          {name(b, bColor)}{complete ? '.' : ' nos votos apurados até agora.'}
         </>
       ),
     });
@@ -67,12 +82,17 @@ export const Manchete = memo(function Manchete({
       id: 'margin',
       node: (
         <>
-          A diferença é de {pct2(margin)} pontos percentuais — {marginComment(margin, counted)}
+          A diferença é de {pct2(margin)} pontos percentuais — {marginComment(counted)}
         </>
       ),
     });
 
-    if (turno === 1 && forecast) {
+    if (turno === 1 && a.runoff && b.runoff) {
+      out.push({
+        id: 'runoff',
+        node: <>{name(a, aColor)} e {name(b, bColor)} passaram ao 2º turno.</>,
+      });
+    } else if (turno === 1 && forecast && !complete && counted >= 10) {
       // 1º turno looks forward: will it be decided today?
       out.push({
         id: 'forecast',
@@ -88,17 +108,16 @@ export const Manchete = memo(function Manchete({
       });
     } else if (turno === 2) {
       // 3. how much vote is still out there
-      const secsLeft = national.sectionsTotal - national.sectionsCounted;
-      const perSection =
-        national.sectionsCounted > 0 ? national.validVotes / national.sectionsCounted : 0;
-      const votesLeft = Math.round(secsLeft * perSection);
-      if (secsLeft > 0 && votesLeft > 0) {
+      const secsLeft = Math.max(0, national.sectionsTotal - national.sectionsCounted);
+      // Don't extrapolate votes from the first sections (often overseas).
+      // Their turnout is not representative of the uncounted electorate.
+      if (secsLeft > 0) {
         out.push({
           id: 'left',
           node: (
             <>
-              Restam {secsLeft.toLocaleString('pt-BR')} seções — cerca de {mi(votesLeft)} de
-              votos válidos ainda por apurar.
+              Restam {secsLeft.toLocaleString('pt-BR')} seções por apurar —{' '}
+              {pct2(100 - counted)}% do total.
             </>
           ),
         });
@@ -143,7 +162,7 @@ export const Manchete = memo(function Manchete({
     }
 
     return out;
-  }, [national, forecast, turno, ufProgress]);
+  }, [national, forecast, turno, ufProgress, counted]);
 
   const [idx, setIdx] = useState(0);
 
@@ -157,22 +176,27 @@ export const Manchete = memo(function Manchete({
   const current = sentences[idx % sentences.length];
 
   return (
-    <div
-      className="sent-in"
-      key={current.id}
-      style={{
-        fontFamily: 'var(--font-serif)',
-        fontSize: 'clamp(19px, 2.4vw, 26px)',
-        fontWeight: 400,
-        lineHeight: 1.25,
-        letterSpacing: '-0.01em',
-        maxWidth: 640,
-        minHeight: '2.5em',
-        textWrap: 'balance',
-      }}
-      aria-live="polite"
-    >
-      {current.node}
+    <div>
+      <div className="num" style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5, marginBottom: 8 }}>
+        {countingStage(counted)}
+      </div>
+      <div
+        className="sent-in"
+        key={current.id}
+        style={{
+          fontFamily: 'var(--font-serif)',
+          fontSize: 'clamp(19px, 2.4vw, 26px)',
+          fontWeight: 400,
+          lineHeight: 1.25,
+          letterSpacing: '-0.01em',
+          maxWidth: 640,
+          minHeight: '2.5em',
+          textWrap: 'balance',
+        }}
+        aria-live="polite"
+      >
+        {current.node}
+      </div>
     </div>
   );
 });
