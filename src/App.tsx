@@ -76,7 +76,7 @@ export default function App() {
       // finished race: show only the Oct 4 counting night — drop today's
       // flat-100% points (local + any cron rows) that stretch the x-axis
       const inNight = (p: TrendPoint) =>
-        p.t >= 1791133200000 && p.t <= 1791212400000; // Oct 4 14:00 → Oct 5 12:00 BRT
+        p.t >= 1791133200000 && p.t <= 1791181800000; // Oct 4 14:00 → Oct 5 12:00 BRT
       return mergeTrends(
         serverTrend.filter(inNight),
         trend.filter(inNight),

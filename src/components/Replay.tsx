@@ -12,7 +12,7 @@ const HISTORY_URL = 'https://placar-feed.nicolasqueiroga.workers.dev/history';
 // 1º turno: pin to the Oct 4 counting night (same window as the chart);
 // 2º turno: the last 24 h, which covers the whole runoff night.
 const T1_NIGHT_START = 1791133200000; // 2026-10-04 14:00 BRT
-const T1_NIGHT_END = 1791212400000; //   2026-10-05 12:00 BRT
+const T1_NIGHT_END = 1791181800000; //   2026-10-05 12:00 BRT
 const replayQuery = (race: 'presidente' | 'presidente2') =>
   race === 'presidente'
     ? `from=${T1_NIGHT_START}&to=${T1_NIGHT_END}`
@@ -53,6 +53,23 @@ export const Replay = memo(function Replay({ race }: { race: 'presidente' | 'pre
           candidates: JSON.parse(p.candidates) as ReplayCandidate[],
         }));
         pts.sort((a, b) => a.ts - b.ts);
+        // The archive's first point is the first generation WITH data
+        // (~17:20 — collectors skip zero-section rows), so the slider
+        // would start at 1-2% already counted. Synthesize the true 17:00
+        // BRT zero-state from the first point's candidate list.
+        if (pts.length > 0) {
+          const first = pts[0];
+          const f = new Date(first.ts);
+          let countStart = Date.UTC(f.getUTCFullYear(), f.getUTCMonth(), f.getUTCDate(), 20, 0, 0); // 17:00 BRT
+          if (first.ts < countStart) countStart -= 86_400_000; // after-midnight point → previous evening
+          if (first.ts > countStart) {
+            pts.unshift({
+              ts: countStart,
+              sections_pct: 0,
+              candidates: first.candidates.map((c) => ({ ...c, votes: 0, pct: 0 })),
+            });
+          }
+        }
         setPoints(pts);
         if (pts.length > 0) setIdx(pts.length - 1);
       })

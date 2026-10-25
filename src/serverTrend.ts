@@ -16,7 +16,7 @@ const HISTORY_URL = 'https://placar-feed.nicolasqueiroga.workers.dev/history';
  * of flat-100% cron rows.
  */
 const T1_NIGHT_START = 1791133200000; // 2026-10-04 14:00 BRT
-const T1_NIGHT_END = 1791212400000; //   2026-10-05 12:00 BRT
+const T1_NIGHT_END = 1791181800000; //   2026-10-05 12:00 BRT
 
 interface HistoryCandidate {
   name: string;
